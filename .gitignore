@@ -1,0 +1,19 @@
+# 依赖
+node_modules/
+
+# 构建产物（node build.js 生成，不入库）
+dist/
+preview/
+
+# 安装包：随时可用 npm run build 重新生成
+releases/*.zip
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*

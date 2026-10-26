@@ -1,0 +1,12 @@
+{
+  "id": "countdown-days",
+  "name": "里程碑",
+  "version": "2.3.0",
+  "description": "里程碑：倒数日、纪念日与生日管理，支持农历生日换算、跨设备同步。",
+  "manifestVersion": 1,
+  "minSupVersion": "14.0.0",
+  "icon": "icon.svg",
+  "iFrame": true,
+  "permissions": [],
+  "hooks": ["persistedDataChanged", "taskDelete", "taskComplete"]
+}
