@@ -14,7 +14,70 @@
   var DAY_MS = 86400000;
   var WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
-  var KINDS = { birthday: '生日', anniversary: '纪念日', countdown: '倒数日' };
+  var KINDS = { birthday: '生日', anniversary: '纪念日', countdown: '倒数日', festival: '节日' };
+
+  /**
+   * 节气表：目前只需要清明，用「通用寿星公式」推算每年的公历日
+   * day = INT(Y × 0.2422 + C) − INT(Y ÷ 4)，Y 为年份后两位
+   * 21 世纪 C = 4.81，20 世纪 C = 5.59（1900-2100 范围内误差 0）
+   */
+  var TERMS = {
+    qingming: { name: '清明', month: 4 }
+  };
+
+  function termDay(term, year) {
+    var t = TERMS[term];
+    if (!t) return 0;
+    var y = year % 100;
+    var c = year >= 2000 ? 4.81 : 5.59;
+    var d = Math.floor(y * 0.2422 + c) - Math.floor(y / 4);
+    // 1900 年前后公式不适用，做个兜底
+    return d >= 1 && d <= 30 ? d : 5;
+  }
+
+  /** 节气在某年的公历日期 */
+  function termDate(term, year) {
+    var t = TERMS[term];
+    if (!t || year < Lunar.MIN_YEAR || year > Lunar.MAX_YEAR) return null;
+    return new Date(year, t.month - 1, termDay(term, year));
+  }
+
+  /**
+   * 预设节日
+   *   group: solar 固定公历 / lunar 农历 / term 节气
+   *   农历除夕记为「腊月三十」，遇到小月由 resolveLunar 自动落到廿九
+   */
+  var FESTIVALS = [
+    { key: 'yuandan', name: '元旦', group: 'solar', month: 1, day: 1, color: '#e8590c' },
+    { key: 'qingren', name: '情人节', group: 'solar', month: 2, day: 14, color: '#d6336c' },
+    { key: 'funi', name: '妇女节', group: 'solar', month: 3, day: 8, color: '#7048e8' },
+    { key: 'laodong', name: '劳动节', group: 'solar', month: 5, day: 1, color: '#c92a2a' },
+    { key: 'ertong', name: '儿童节', group: 'solar', month: 6, day: 1, color: '#f59f00' },
+    { key: 'guoqing', name: '国庆节', group: 'solar', month: 10, day: 1, color: '#c92a2a' },
+    { key: 'shengdan', name: '圣诞节', group: 'solar', month: 12, day: 25, color: '#0ca678' },
+
+    { key: 'chuxi', name: '除夕', group: 'lunar', month: 12, day: 30, color: '#c92a2a' },
+    { key: 'chunjie', name: '春节', group: 'lunar', month: 1, day: 1, color: '#c92a2a' },
+    { key: 'yuanxiao', name: '元宵节', group: 'lunar', month: 1, day: 15, color: '#e8590c' },
+    { key: 'longtai', name: '龙抬头', group: 'lunar', month: 2, day: 2, color: '#0ca678' },
+    { key: 'duanwu', name: '端午节', group: 'lunar', month: 5, day: 5, color: '#0ca678' },
+    { key: 'qixi', name: '七夕', group: 'lunar', month: 7, day: 7, color: '#d6336c' },
+    { key: 'zhongyuan', name: '中元节', group: 'lunar', month: 7, day: 15, color: '#7048e8' },
+    { key: 'zhongqiu', name: '中秋节', group: 'lunar', month: 8, day: 15, color: '#7048e8' },
+    { key: 'chongyang', name: '重阳节', group: 'lunar', month: 9, day: 9, color: '#f59f00' },
+    { key: 'laba', name: '腊八节', group: 'lunar', month: 12, day: 8, color: '#1c7ed6' },
+
+    { key: 'qingming', name: '清明', group: 'term', month: 4, day: 5, color: '#0ca678' }
+  ];
+
+  var FESTIVAL_GROUPS = { solar: '公历', lunar: '农历', term: '节气' };
+
+  function festivalByKey(key) {
+    for (var i = 0; i < FESTIVALS.length; i++) {
+      if (FESTIVALS[i].key === key) return FESTIVALS[i];
+    }
+    return null;
+  }
 
   // 日期 -> 当天零点（本地时区），用于天数差计算
   function startOfDay(d) {
@@ -73,12 +136,14 @@
       // 任务归属的项目名
       taskProject: '里程碑提醒',
       // 顶部是否放大显示当前分区的第一条
-      hero: true
+      hero: true,
+      // 倒数日过期后，名称是否加删除线
+      strikeExpired: true
     };
   }
 
   function emptyData() {
-    return { version: 4, events: [], settings: emptySettings() };
+    return { version: 5, events: [], settings: emptySettings() };
   }
 
   /** 规范化外部数据，容错处理历史/损坏数据 */
@@ -97,6 +162,7 @@
         data.settings.taskProject = s.taskProject.trim().slice(0, 40);
       }
       data.settings.hero = s.hero !== false;
+      data.settings.strikeExpired = s.strikeExpired !== false;
       if (typeof s.taskSync === 'boolean') legacy.task = s.taskSync;
       if (typeof s.snackOnOpen === 'boolean') legacy.snack = s.snackOnOpen;
     }
@@ -104,15 +170,22 @@
     var list = Array.isArray(raw.events) ? raw.events : [];
     data.events = list.map(function (e, i) {
       if (!e || typeof e !== 'object') return null;
+
+      var kind = KINDS[e.kind] ? e.kind : 'countdown';
+      // 预设节日的标识（选了哪个预设），自定义节日为 null
+      var preset = typeof e.preset === 'string' && festivalByKey(e.preset) ? e.preset : null;
+      // 节气：日期由公式推算，不落死日期
+      var term = typeof e.term === 'string' && TERMS[e.term] ? e.term : null;
+
       var date = parseYMD(e.date) ? ymd(parseYMD(e.date)) : null;
       var lunar = null;
-      if (e.lunar && typeof e.lunar === 'object') {
+      if (!term && e.lunar && typeof e.lunar === 'object') {
         var lm = Math.round(+e.lunar.month), ld = Math.round(+e.lunar.day), ly = Math.round(+e.lunar.year);
         if (lm >= 1 && lm <= 12 && ld >= 1 && ld <= 30) {
           lunar = { year: ly || new Date().getFullYear(), month: lm, day: ld, isLeap: !!e.lunar.isLeap };
         }
       }
-      var calendar = e.calendar === 'lunar' ? 'lunar' : 'solar';
+      var calendar = term ? 'solar' : (e.calendar === 'lunar' ? 'lunar' : 'solar');
       if (calendar === 'lunar' && !lunar) calendar = 'solar';
 
       // 公历日期缺失时用农历反推；两者都不可用则丢弃该条
@@ -120,9 +193,14 @@
         var back = lunarToSolarOf(lunar);
         if (back) date = ymd(back);
       }
+      if (term) {
+        lunar = null;
+        if (!date) {
+          var td = termDate(term, new Date().getFullYear());
+          if (td) date = ymd(td);
+        }
+      }
       if (!date) return null;
-
-      var kind = KINDS[e.kind] ? e.kind : 'countdown';
 
       return {
         id: typeof e.id === 'string' && e.id ? e.id : 'e' + i + Date.now().toString(36),
@@ -131,6 +209,8 @@
         calendar: calendar,
         date: date,
         lunar: lunar,
+        term: term,
+        preset: preset,
         repeat: e.repeat === 'yearly' || kind !== 'countdown',
         color: typeof e.color === 'string' && /^#[0-9a-f]{6}$/i.test(e.color) ? e.color : COLORS[0],
         note: typeof e.note === 'string' ? e.note.slice(0, 300) : '',
@@ -214,6 +294,17 @@
   }
 
   function nextSolar(ev, t) {
+    // 节气节日（清明）：日期每年由公式推算
+    if (ev.term && TERMS[ev.term]) {
+      for (var k = 0; k < 8; k++) {
+        var tc = termDate(ev.term, t.getFullYear() + k);
+        if (tc && diffDays(t, tc) >= 0) {
+          return { date: tc, days: diffDays(t, tc), isPast: false, index: k };
+        }
+      }
+      return { date: null, days: 0, isPast: true, index: 0 };
+    }
+
     var base = parseYMD(ev.date);
     if (!base) return { date: null, days: 0, isPast: true, index: 0 };
 
@@ -223,11 +314,11 @@
     }
 
     // 每年重复：从今年开始往后找，最多找 8 年
-    for (var k = 0; k < 8; k++) {
-      var year = t.getFullYear() + k;
+    for (var j = 0; j < 8; j++) {
+      var year = t.getFullYear() + j;
       var cand = safeYM(year, base.getMonth(), base.getDate());
       if (diffDays(t, cand) >= 0) {
-        return { date: cand, days: diffDays(t, cand), isPast: false, index: k };
+        return { date: cand, days: diffDays(t, cand), isPast: false, index: j };
       }
     }
     return { date: null, days: 0, isPast: true, index: 0 };
@@ -380,7 +471,9 @@
   function cycleProgress(ev, occ) {
     if (!ev.repeat || !occ || !occ.date || occ.days < 0) return null;
     var prev;
-    if (ev.calendar === 'lunar' && ev.lunar) {
+    if (ev.term && TERMS[ev.term]) {
+      prev = termDate(ev.term, occ.date.getFullYear() - 1);
+    } else if (ev.calendar === 'lunar' && ev.lunar) {
       var ly = occ.lunarYear - 1;
       if (ly < Lunar.MIN_YEAR) return null;
       prev = resolveLunar(ly, ev.lunar.month, ev.lunar.day, ev.lunar.isLeap, 'regular');
@@ -397,7 +490,11 @@
   }
 
   /** 事件的日期描述，如「1990-05-12 · 农历四月十八」 */
-  function dateLabel(ev) {
+  function dateLabel(ev, occ) {
+    if (ev.term && TERMS[ev.term]) {
+      var td = (occ && occ.date) || termDate(ev.term, new Date().getFullYear());
+      return (td ? ymd(td) + ' · ' : '') + TERMS[ev.term].name;
+    }
     if (ev.calendar === 'lunar' && ev.lunar) {
       var s = lunarToSolarOf(ev.lunar);
       return (s ? ymd(s) + ' · ' : '') + Lunar.lunarText(ev.lunar.month, ev.lunar.day, ev.lunar.isLeap);
@@ -406,6 +503,48 @@
     if (!b) return '日期未设置';
     var l = Lunar.solarToLunar(b);
     return ymd(b) + ' · ' + Lunar.lunarText(l.month, l.day, l.isLeap);
+  }
+
+  /**
+   * 预设节日 → 事件字段（新建时用）
+   * 返回的 date 是「下一次发生」的公历日期，农历节日同时给出 lunar 字段
+   * @param {string} key FESTIVALS[].key
+   * @param {Date} today 基准日
+   * @returns {{title:string, calendar:string, date:string, lunar:object|null, term:string|null, color:string}|null}
+   */
+  function festivalFields(key, today) {
+    var f = festivalByKey(key);
+    if (!f) return null;
+    var t = startOfDay(today || new Date());
+    var out = { title: f.name, calendar: 'solar', date: null, lunar: null, term: null, color: f.color };
+
+    if (f.group === 'lunar') {
+      out.calendar = 'lunar';
+      var lf = Lunar.solarToLunar(t);
+      var ly = lf.year;
+      var cand = resolveLunar(ly, f.month, f.day, false, 'regular');
+      if (!cand || diffDays(t, cand) < 0) {
+        var next = resolveLunar(ly + 1, f.month, f.day, false, 'regular');
+        if (next) { ly = ly + 1; cand = next; }
+      }
+      // 除夕固定在腊月三十，小月由 resolveLunar 自动回落到廿九
+      out.lunar = { year: ly, month: f.month, day: f.day, isLeap: false };
+      out.date = cand ? ymd(cand) : ymd(t);
+      return out;
+    }
+
+    if (f.group === 'term') {
+      out.term = f.key;
+      var td = termDate(f.key, t.getFullYear());
+      if (!td || diffDays(t, td) < 0) td = termDate(f.key, t.getFullYear() + 1);
+      out.date = td ? ymd(td) : ymd(t);
+      return out;
+    }
+
+    var c = safeYM(t.getFullYear(), f.month - 1, f.day);
+    if (diffDays(t, c) < 0) c = safeYM(t.getFullYear() + 1, f.month - 1, f.day);
+    out.date = ymd(c);
+    return out;
   }
 
   /** 生肖/干支说明，仅农历生日有意义 */
@@ -429,6 +568,12 @@
     WEEK: WEEK,
     DAY_MS: DAY_MS,
     REMIND_OFFSETS: REMIND_OFFSETS,
+    FESTIVALS: FESTIVALS,
+    FESTIVAL_GROUPS: FESTIVAL_GROUPS,
+    TERMS: TERMS,
+    festivalByKey: festivalByKey,
+    festivalFields: festivalFields,
+    termDate: termDate,
     defaultRemind: defaultRemind,
     startOfDay: startOfDay,
     diffDays: diffDays,

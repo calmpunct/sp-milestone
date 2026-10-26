@@ -260,8 +260,10 @@ const legacy2 = Core.normalize({
 });
 eq(legacy2.events[0].remind.task, false, '旧 taskSync:false → 不建任务');
 eq(legacy2.events[0].remind.snack, true, '旧 snackOnOpen:true → 弹提示条');
-eq(Object.keys(legacy2.settings).sort().join(','), 'hero,leapPolicy,taskProject', 'settings 只剩历法策略、项目名与置顶开关');
+eq(Object.keys(legacy2.settings).sort().join(','), 'hero,leapPolicy,strikeExpired,taskProject', 'settings 只剩历法策略、项目名与两个显示开关');
 eq(legacy2.settings.hero, true, '旧数据默认开启置顶卡片');
+eq(legacy2.settings.strikeExpired, true, '旧数据默认给过期倒数日加删除线');
+eq(Core.normalize({ settings: { strikeExpired: false } }).settings.strikeExpired, false, '删除线开关可关闭');
 eq(Core.normalize({ settings: { hero: false } }).settings.hero, false, '关闭置顶被保留');
 eq(Core.normalize({}).settings.hero, true, '没有 settings 时默认开启');
 
@@ -276,6 +278,107 @@ eq(legacyOff.remind.snack, false, '旧 on:false 不弹提示条');
 const arch = Core.normalize({ events: [{ title: 'd', date: '2026-01-01', archived: true }] }).events[0];
 eq(arch.archived, true, '归档标记保留');
 eq(Core.normalize({ events: [{ title: 'e', date: '2026-01-01', archived: 'yes' }] }).events[0].archived, true, '非空值视为归档');
+
+// 19. 节日类型与预设
+console.log('[10] 节日类型与预设');
+eq(Core.KINDS.festival, '节日', '类型名');
+
+const groups = {};
+Core.FESTIVALS.forEach((f) => { groups[f.group] = (groups[f.group] || 0) + 1; });
+ok(groups.solar >= 5, '公历预设至少 5 个');
+ok(groups.lunar >= 8, '农历预设至少 8 个');
+ok(groups.term >= 1, '节气预设至少 1 个');
+eq(Core.festivalByKey('zhongqiu').name, '中秋节', '按 key 查预设');
+eq(Core.festivalByKey('nope'), null, '未知 key 返回 null');
+eq(Core.festivalFields('nope'), null, '未知 key 无字段');
+
+// 公历节日
+const gf = Core.festivalFields('guoqing', TODAY);
+eq(gf.date, '2027-10-01', '国庆下一次公共日');
+eq(gf.calendar, 'solar', '公历节日用公历');
+const guoqingEv = Core.normalize({
+  events: [{ title: gf.title, kind: 'festival', calendar: gf.calendar, date: gf.date, preset: 'guoqing' }]
+}).events[0];
+eq(guoqingEv.kind, 'festival', '节日类型保留');
+eq(guoqingEv.repeat, true, '节日默认每年重复');
+eq(guoqingEv.preset, 'guoqing', '预设标识保留');
+let fo = Core.nextOccurrence(guoqingEv, TODAY);
+eq(ymd(fo.date), '2027-10-01', '节日按年循环');
+eq(Core.nextOccurrence(guoqingEv, new Date(2028, 0, 1)).date.getFullYear(), 2028, '过年后推下一年');
+
+// 农历节日：必须落在正确的农历日
+const cj = Core.festivalFields('chunjie', TODAY);
+eq(cj.calendar, 'lunar', '春节是农历');
+const cjEv = Core.normalize({
+  events: [{ title: cj.title, kind: 'festival', calendar: 'lunar', date: cj.date, lunar: cj.lunar, preset: 'chunjie' }]
+}).events[0];
+fo = Core.nextOccurrence(cjEv, TODAY);
+eq(ymd(fo.date), '2027-02-06', '2027 春节');
+eq(L.solarToLunar(fo.date).month + '/' + L.solarToLunar(fo.date).day, '1/1', '落在正月初一');
+
+let misLunar = 0;
+Core.FESTIVALS.filter((f) => f.group === 'lunar').forEach((f) => {
+  for (let yy = 2026; yy <= 2032; yy++) {
+    const base = new Date(yy, 0, 1);
+    const fd = Core.festivalFields(f.key, base);
+    const ev = Core.normalize({
+      events: [{ title: f.name, kind: 'festival', calendar: 'lunar', date: fd.date, lunar: fd.lunar }]
+    }).events[0];
+    const o = Core.nextOccurrence(ev, base);
+    if (!o.date) { misLunar++; continue; }
+    const l = L.solarToLunar(o.date);
+    // 除夕（腊月三十）遇小月按廿九
+    const wantDay = Math.min(f.day, L.monthDays(l.year, f.month));
+    if (l.month !== f.month || l.day !== wantDay) misLunar++;
+  }
+});
+eq(misLunar, 0, '农历节日 2026-2032 都落在正确农历日');
+
+// 除夕：腊月只有廿九天时回落到廿九
+const chuxi = Core.festivalFields('chuxi', TODAY);
+eq(chuxi.lunar.day, 30, '除夕记录为腊月三十');
+const chuxiEv = Core.normalize({
+  events: [{ title: '除夕', kind: 'festival', calendar: 'lunar', date: chuxi.date, lunar: chuxi.lunar, preset: 'chuxi' }]
+}).events[0];
+const cxo = Core.nextOccurrence(chuxiEv, TODAY);
+const cxl = L.solarToLunar(cxo.date);
+const nextCny = Core.nextOccurrence(cjEv, TODAY).date;
+eq(Core.diffDays(cxo.date, nextCny), 1, '除夕是春节前一天');
+
+// 节气：清明按公式推算
+eq(ymd(Core.termDate('qingming', 2026)), '2026-04-05', '2026 清明');
+eq(ymd(Core.termDate('qingming', 2027)), '2027-04-05', '2027 清明');
+eq(ymd(Core.termDate('qingming', 2028)), '2028-04-04', '2028 清明');
+eq(Core.termDate('nope', 2026), null, '未知节气返回 null');
+
+const qm = Core.festivalFields('qingming', TODAY);
+eq(qm.term, 'qingming', '清明带节气标识');
+const qmEv = Core.normalize({
+  events: [{ title: '清明', kind: 'festival', calendar: 'solar', date: qm.date, term: 'qingming', preset: 'qingming' }]
+}).events[0];
+eq(qmEv.term, 'qingming', '节气标识保留');
+eq(qmEv.calendar, 'solar', '节气算公历');
+eq(qmEv.lunar, null, '节气不保留农历');
+eq(ymd(Core.nextOccurrence(qmEv, TODAY).date), '2027-04-05', '清明下一次');
+eq(ymd(Core.nextOccurrence(qmEv, new Date(2028, 5, 1)).date), '2029-04-04', '清明按年推且年度日期会变');
+eq(Core.dateLabel(qmEv), '2026-04-05 · 清明', '清明日期文案');
+
+// 自定义节日：只有名称和日期
+const custom = Core.normalize({
+  events: [{ title: '公司年会', kind: 'festival', calendar: 'solar', date: '2027-01-20' }]
+}).events[0];
+eq(custom.kind, 'festival', '自定义节日类型');
+eq(custom.preset, null, '自定义节日没有预设标识');
+eq(custom.term, null, '自定义节日没有节气');
+eq(ymd(Core.nextOccurrence(custom, TODAY).date), '2027-01-20', '自定义节日按年重复');
+
+// 节日提醒：与倒数日一致
+const festToday = {
+  id: 'f1', title: '国庆节', kind: 'festival', calendar: 'solar', date: Core.ymd(TODAY),
+  lunar: null, term: null, repeat: true, remind: { task: true, snack: true, offsets: [0, 1] }
+};
+eq(Core.dueReminders([festToday], TODAY).length, 1, '节日当天提醒');
+eq(Core.hasReminder(festToday), true, '节日显示铃铛');
 
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

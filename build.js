@@ -26,7 +26,7 @@ const read = (p) => fs.readFileSync(path.join(SRC, p), 'utf8');
 
 // 预览页示例数据
 const DEMO_DATA = {
-  version: 3,
+  version: 5,
   settings: { leapPolicy: 'regular', taskProject: '里程碑提醒', hero: true },
   events: [
     { id: 'd1', title: '妈妈生日', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
@@ -42,11 +42,22 @@ const DEMO_DATA = {
     { id: 'd4', title: '项目上线', kind: 'countdown', calendar: 'solar', date: '2026-12-01',
       lunar: null, repeat: false, color: '#1c7ed6', note: '', pinned: false, createdAt: 4,
       remind: { task: true, snack: true, offsets: [0, 1, 3, 7] } },
-    { id: 'd5', title: '入职纪念', kind: 'anniversary', calendar: 'solar', date: '2021-03-01',
-      lunar: null, repeat: true, color: '#0ca678', note: '', pinned: false, createdAt: 5,
+    { id: 'd5', title: '中秋节', kind: 'festival', calendar: 'lunar', date: '2026-09-25',
+      lunar: { year: 2026, month: 8, day: 15, isLeap: false }, term: null, preset: 'zhongqiu',
+      repeat: true, color: '#7048e8', note: '', pinned: false, createdAt: 5,
+      remind: { task: true, snack: true, offsets: [0, 1, 7] } },
+    { id: 'd6', title: '国庆节', kind: 'festival', calendar: 'solar', date: '2026-10-01',
+      lunar: null, term: null, preset: 'guoqing', repeat: true, color: '#c92a2a',
+      note: '', pinned: false, createdAt: 6,
+      remind: { task: true, snack: false, offsets: [0, 1, 3] } },
+    { id: 'd7', title: '入职纪念', kind: 'anniversary', calendar: 'solar', date: '2021-03-01',
+      lunar: null, repeat: true, color: '#0ca678', note: '', pinned: false, createdAt: 7,
       remind: { task: false, snack: false, offsets: [0, 1] } },
-    { id: 'd6', title: '大学室友生日', kind: 'birthday', calendar: 'solar', date: '1994-03-12',
-      lunar: null, repeat: true, color: '#7048e8', note: '', pinned: false, createdAt: 6,
+    { id: 'd8', title: '去年年会', kind: 'countdown', calendar: 'solar', date: '2025-01-18',
+      lunar: null, repeat: false, color: '#5c7cfa', note: '', pinned: false, createdAt: 8,
+      remind: { task: false, snack: false, offsets: [0] } },
+    { id: 'd9', title: '大学室友生日', kind: 'birthday', calendar: 'solar', date: '1994-03-12',
+      lunar: null, repeat: true, color: '#d6336c', note: '', pinned: false, createdAt: 9,
       remind: { task: false, snack: false, offsets: [0] }, archived: true }
   ]
 };

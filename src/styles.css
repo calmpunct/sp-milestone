@@ -335,6 +335,35 @@ html[data-cd-theme='dark'] .cd-chip[aria-pressed='true'] {
   white-space: nowrap;
 }
 
+/* 倒数日过期：名称划掉，表示这件事已经结束
+   em 自带 overflow:hidden（省略号要它），所以用「padding + 负 margin」把裁剪区左右各放宽 5px，
+   内层 span 再加同样的 padding，删除线就会画到文字两侧空白里，文字位置不变 */
+.cd-item-name--done {
+  color: var(--cd-muted);
+  padding: 0 5px;
+  margin: 0 -5px;
+}
+
+.cd-item-name--done span {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: currentColor;
+  padding: 0 5px;
+  margin: 0 -5px;
+}
+
+/* 过期倒数日的类型标签 */
+.cd-tag--expired {
+  background: rgba(128, 138, 155, 0.18);
+  color: var(--cd-muted);
+  letter-spacing: 0;
+}
+
+html[data-cd-theme='dark'] .cd-tag--expired {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--cd-muted);
+}
+
 .cd-tag {
   flex: 0 0 auto;
   font-size: 10.5px;
@@ -566,6 +595,43 @@ input[type='date'].cd-input { min-height: 42px; }
 
 .cd-lunar-row { display: flex; gap: 8px; }
 .cd-lunar-row select { flex: 1 1 0; min-width: 0; }
+
+/* ============ 节日预设 ============ */
+.cd-presets { display: flex; flex-direction: column; gap: 8px; }
+
+.cd-preset-group {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--cd-muted);
+  opacity: 0.85;
+}
+
+.cd-preset-list { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.cd-preset {
+  height: 31px;
+  padding: 0 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cd-muted);
+  background: var(--cd-card);
+  border: 1px solid var(--cd-border);
+  transition: background 0.16s var(--cd-ease), color 0.16s var(--cd-ease), border-color 0.16s var(--cd-ease);
+}
+
+.cd-preset[aria-pressed='true'] {
+  color: #fff;
+  background: var(--cd-accent);
+  border-color: var(--cd-accent);
+}
+
+html[data-cd-theme='dark'] .cd-preset[aria-pressed='true'] { color: #101318; }
+
+.cd-preset--free { border-style: dashed; }
+
+.cd-preset--free[aria-pressed='true'] { border-style: solid; }
 
 .cd-check {
   display: inline-flex;

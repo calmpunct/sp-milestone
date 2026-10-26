@@ -261,11 +261,25 @@
       '</div>';
   }
 
+  /** 倒数日已经过期（关掉了「过期后重新开始倒数」，且日子已经过去） */
+  function isExpiredCountdown(ev, m) {
+    return ev.kind === 'countdown' && m.mode === 'elapsed';
+  }
+
+  /** 过期倒数日是否要划掉名称，取决于设置 */
+  function isDoneCountdown(ev, m) {
+    if (!isExpiredCountdown(ev, m)) return false;
+    var st = state.data.settings || Core.emptySettings();
+    return st.strikeExpired !== false;
+  }
+
   function itemHtml(r) {
     var ev = r.ev;
     var m = r.metric;
     var rgb = hexToRgb(ev.color).join(',');
     var isToday = m.mode !== 'none' && m.days === 0;
+    var expired = isExpiredCountdown(ev, m);
+    var done = isDoneCountdown(ev, m);
 
     var numText, unitText, numCls = '';
     if (m.mode === 'none') {
@@ -281,7 +295,7 @@
       numCls = ' cd-item-num--elapsed';
     }
 
-    var sub = Core.dateLabel(ev);
+    var sub = Core.dateLabel(ev, r.occ);
     var age = ageText(r);
     if (age) sub += ' · ' + age;
 
@@ -291,15 +305,22 @@
         '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>'
       : '';
 
-    var tag = isArchiveView()
-      ? '<span class="cd-tag cd-tag--muted">已归档 · ' + esc(Core.KINDS[ev.kind]) + '</span>'
-      : '<span class="cd-tag">' + esc(Core.KINDS[ev.kind]) + '</span>';
+    var tag;
+    if (isArchiveView()) {
+      tag = '<span class="cd-tag cd-tag--muted">已归档 · ' + esc(Core.KINDS[ev.kind]) + '</span>';
+    } else if (expired) {
+      // 过期了就把类型标签换成更直白的说法，一眼看得出这条已经结束
+      tag = '<span class="cd-tag cd-tag--expired">过期的倒数日</span>';
+    } else {
+      tag = '<span class="cd-tag">' + esc(Core.KINDS[ev.kind]) + '</span>';
+    }
 
     return '<div class="cd-item' + (isToday ? ' is-today' : '') + '" data-id="' + esc(ev.id) + '"' +
         ' style="--cd-rc:' + rgb + ';--cd-rc-color:rgb(' + rgb + ')" role="button" tabindex="0">' +
         '<div class="cd-item-main">' +
-          '<div class="cd-item-title"><em>' + esc(nameOf(ev)) + '</em>' +
-            bell + tag + '</div>' +
+          '<div class="cd-item-title"><em' + (done ? ' class="cd-item-name--done"' : '') + '>' +
+            '<span>' + esc(nameOf(ev)) + '</span>' +
+            '</em>' + bell + tag + '</div>' +
           '<div class="cd-item-sub">' + esc(sub) + '</div>' +
         '</div>' +
         '<div class="cd-item-num' + numCls + '">' +
@@ -419,6 +440,10 @@
       calendar: 'solar',
       date: Core.ymd(today),
       lunar: { year: lf.year, month: lf.month, day: lf.day, isLeap: false },
+      term: null,
+      preset: null,
+      // 节日预设的多选列表（批量添加用），保存时每个预设生成一条
+      presets: [],
       repeat: true,
       color: Core.COLORS[0],
       note: '',
@@ -519,16 +544,207 @@
     updateLunarPreview();
   }
 
+  /* ---- 节日预设 ---- */
+
+  /** 预设按钮按 公历 / 农历 / 节气 分组渲染，末尾是「自定义」 */
+  function buildPresets() {
+    var html = '';
+    ['solar', 'lunar', 'term'].forEach(function (g) {
+      var items = Core.FESTIVALS.filter(function (f) { return f.group === g; });
+      if (!items.length) return;
+      html += '<div class="cd-preset-group">' + Core.FESTIVAL_GROUPS[g] + '</div>' +
+        '<div class="cd-preset-list">' + items.map(function (f) {
+          return '<button type="button" class="cd-preset" data-k="' + f.key + '" aria-pressed="false">' +
+            esc(f.name) + '</button>';
+        }).join('') + '</div>';
+    });
+    html += '<div class="cd-preset-group">自定义</div>' +
+      '<div class="cd-preset-list">' +
+        '<button type="button" class="cd-preset cd-preset--free" data-k="" aria-pressed="false">自定义节日</button>' +
+      '</div>';
+    $('#fPresets').innerHTML = html;
+  }
+
+  /** 高亮选中的预设；「自定义」在没有选中任何预设时是按下态 */
+  function markPreset(keys) {
+    var on = keys || [];
+    Array.prototype.forEach.call(document.querySelectorAll('#fPresets .cd-preset'), function (b) {
+      var k = b.dataset.k || '';
+      var pressed = k === '' ? on.length === 0 : on.indexOf(k) !== -1;
+      b.setAttribute('aria-pressed', String(pressed));
+    });
+  }
+
+  /** 草稿里选中的预设列表 */
+  function selectedPresets() {
+    var d = state.draft;
+    if (!d || !d.presets) return [];
+    return d.presets;
+  }
+
+  function refreshPresetRow(kind) {
+    var on = (kind || segValue('#fKind')) === 'festival';
+    $('#fPresetWrap').hidden = !on;
+    if (on) {
+      markPreset(selectedPresets());
+      refreshPresetHint();
+    }
+    refreshArchiveRow();
+    refreshSaveLabel();
+  }
+
+  /** 节日每年都会再来，不存在「归档」这回事，所以直接不显示这个开关 */
+  function refreshArchiveRow() {
+    var wrap = $('#fArchiveWrap');
+    if (!wrap) return;
+    var kind = segValue('#fKind') || 'countdown';
+    wrap.hidden = kind === 'festival';
+    if (kind === 'festival') $('#fArchived').checked = false;
+  }
+
+  /** 保存按钮在批量添加时显示数量，避免用户以为只加了一个 */
+  function refreshSaveLabel() {
+    var el = $('#cdSave');
+    if (!el) return;
+    var kind = segValue('#fKind') || 'countdown';
+    var n = (!state.editingId && kind === 'festival') ? selectedPresets().length : 0;
+    el.textContent = n > 1 ? '添加 ' + n + ' 个' : '保存';
+  }
+
+  function refreshPresetHint() {
+    var el = $('#fPresetHint');
+    if (!el) return;
+    var keys = selectedPresets();
+    el.className = 'cd-hint';
+
+    if (!keys.length) {
+      el.textContent = '选一个节日自动填好日期；也可多选几个一次加入，或选「自定义节日」自己填。';
+      return;
+    }
+
+    if (keys.length > 1) {
+      var names = keys.map(function (k) {
+        var f = Core.festivalByKey(k);
+        return f ? f.name : k;
+      });
+      el.textContent = '已选 ' + keys.length + ' 个：' + names.join('、') + '，保存后一次全部加入。';
+      return;
+    }
+
+    var f = Core.festivalByKey(keys[0]);
+    var when = (state.draft && state.draft.date) ? '下一次 ' + state.draft.date + '。' : '';
+    var text;
+    if (!f) {
+      text = '自定义节日：自己填名称和日期，每年自动倒数。';
+    } else if (f.group === 'term') {
+      text = f.name + '按节气推算，每年落在 4 月 4-5 日，日期会自动更新。';
+    } else if (f.key === 'chuxi') {
+      text = '除夕按腊月最后一天计算，腊月是廿九天的年份自动按廿九。';
+    } else if (f.group === 'lunar') {
+      text = f.name + '按农历计算，每年公历日期不同。';
+    } else {
+      text = f.name + '每年 ' + f.month + ' 月 ' + f.day + ' 日。';
+    }
+    el.textContent = text + when;
+  }
+
+  /**
+   * 点预设：创建时多选（再点一次取消），编辑时单选（点别的就换）
+   * 「自定义」清空选择，回到自己填日期
+   */
+  function togglePreset(key) {
+    var d = state.draft;
+    if (!d) return;
+    if (!d.presets) d.presets = [];
+
+    if (!key) {
+      d.presets = [];
+    } else if (state.editingId) {
+      d.presets = d.presets.length === 1 && d.presets[0] === key ? [] : [key];
+    } else {
+      var i = d.presets.indexOf(key);
+      if (i === -1) d.presets.push(key); else d.presets.splice(i, 1);
+    }
+
+    applyPresets();
+  }
+
+  /** 把当前选中的预设回填到表单：单选填名称/历法/日期/颜色，多选只留在提示里 */
+  function applyPresets() {
+    var d = state.draft;
+    var keys = selectedPresets();
+
+    if (keys.length !== 1) {
+      d.preset = null;
+      d.term = null;
+      if (keys.length > 1) d.title = '';
+      markPreset(keys);
+      refreshCalendarRow();
+      refreshPresetHint();
+      refreshSaveLabel();
+      return;
+    }
+
+    var f = Core.festivalFields(keys[0]);
+    if (!f) return;
+
+    d.preset = keys[0];
+    d.term = f.term;
+    d.title = f.title;
+    d.color = f.color;
+    d.calendar = f.calendar;
+    d.date = f.date;
+    d.lunar = f.lunar;
+    d.repeat = true;
+
+    $('#fTitle').value = d.title;
+    setSeg('#fCalendar', d.calendar);
+    $('#fDate').value = d.date;
+    buildColors(d.color);
+
+    if (f.calendar === 'lunar' && f.lunar) {
+      $('#fLY').value = String(f.lunar.year);
+      $('#fLM').value = String(f.lunar.month);
+      $('#fLeap').checked = false;
+      $('#fLeapWrap').hidden = !(L.leapMonth(f.lunar.year) === f.lunar.month);
+      buildDaySelect(f.lunar.year, f.lunar.month, false, f.lunar.day);
+      updateLunarPreview();
+    } else {
+      solarToLunarFields(Core.parseYMD(d.date) || new Date());
+    }
+
+    markPreset(keys);
+    refreshCalendarRow();
+    refreshPresetHint();
+    refreshSaveLabel();
+  }
+
   function refreshRepeatRow() {
     var kind = segValue('#fKind');
     $('#fRepeatWrap').hidden = kind !== 'countdown';
     if (kind !== 'countdown') $('#fRepeat').checked = true;
   }
 
+  /**
+   * 公历/农历控件只在「自定义」时出现：预设已经把日期算好了，再摆一堆下拉框只会让人困惑
+   * 多选时名称也没有意义（每个节日用自己的名字），一并隐藏
+   */
+  function isCustomDate() {
+    var kind = segValue('#fKind') || 'countdown';
+    if (kind !== 'festival') return true;
+    return selectedPresets().length === 0;
+  }
+
   function refreshCalendarRow() {
     var cal = segValue('#fCalendar');
-    $('#fSolarWrap').hidden = cal !== 'solar';
-    $('#fLunarWrap').hidden = cal !== 'lunar';
+    var custom = isCustomDate();
+    var multi = selectedPresets().length > 1;
+    if ($('#fTitleWrap')) $('#fTitleWrap').hidden = multi;
+    // 多选时每条用自己的节日配色，颜色选择器没有意义
+    if ($('#fColorWrap')) $('#fColorWrap').hidden = multi;
+    $('#fCalendarWrap').hidden = !custom;
+    $('#fSolarWrap').hidden = !custom || cal !== 'solar';
+    $('#fLunarWrap').hidden = !custom || cal !== 'lunar';
   }
 
   function fillSheet(d, isEdit) {
@@ -542,8 +758,10 @@
     buildColors(d.color);
     renderRemind(d.remind);
     $('#fArchived').checked = !!d.archived;
+    if (!d.presets) d.presets = d.preset ? [d.preset] : [];
     refreshRepeatRow();
     refreshCalendarRow();
+    refreshPresetRow(d.kind);
     if (d.calendar === 'lunar' && d.lunar) {
       $('#fLY').value = String(d.lunar.year);
       $('#fLM').value = String(d.lunar.month);
@@ -597,6 +815,7 @@
   function refreshSettingsForm() {
     var st = state.data.settings || Core.emptySettings();
     $('#sHero').checked = st.hero !== false;
+    $('#sStrike').checked = st.strikeExpired !== false;
     var meta = document.querySelector('meta[name="cd-version"]');
     var ver = meta ? (meta.getAttribute('content') || '') : '';
     $('#sAbout').textContent = '里程碑' + (ver ? ' v' + ver : '') +
@@ -661,6 +880,24 @@
     }, 340);
   }
 
+  /** 表单里的提醒渠道与天数（批量添加时每条共用同一份） */
+  function formRemind() {
+    var offs = Array.prototype.slice.call(
+      document.querySelectorAll('#fOffsets button[aria-pressed="true"]')
+    ).map(function (b) { return +b.dataset.d; });
+    offs.sort(function (a, b) { return a - b; });
+    // 两个渠道各自独立；选了渠道但没勾天数时，默认按当天提醒
+    var taskOn = $('#fTask').checked;
+    var snackOn = $('#fSnack').checked;
+    return {
+      task: taskOn,
+      snack: snackOn,
+      // 兼容字段：仍在使用 2.0 的客户端读到 on 才知道「有提醒」
+      on: taskOn || snackOn,
+      offsets: offs.length ? offs : [0]
+    };
+  }
+
   function collect() {
     var d = state.draft;
     d.kind = segValue('#fKind') || 'countdown';
@@ -669,28 +906,30 @@
     d.calendar = segValue('#fCalendar') || 'solar';
     d.note = $('#fNote').value.trim().slice(0, 200);
     d.repeat = d.kind !== 'countdown' ? true : $('#fRepeat').checked;
+    // 只有节日保留预设标识；切到别的类型时清掉，避免带着节气/预设走
+    if (d.kind !== 'festival') { d.preset = null; d.term = null; }
+    // 手动改成农历时不可能是节气
+    if (d.calendar !== 'solar') d.term = null;
+
+    // 用户手动改了历法，就不再算这个预设（否则提示与实际日期对不上）
+    var fp = d.preset ? Core.festivalByKey(d.preset) : null;
+    if (fp && (fp.group === 'lunar' ? 'lunar' : 'solar') !== d.calendar) {
+      d.preset = null;
+      fp = null;
+    }
     var picked = document.querySelector('#fColors .cd-color[aria-pressed="true"]');
     if (picked) d.color = picked.dataset.c;
 
-    var offs = Array.prototype.slice.call(
-      document.querySelectorAll('#fOffsets button[aria-pressed="true"]')
-    ).map(function (b) { return +b.dataset.d; });
-    offs.sort(function (a, b) { return a - b; });
-    // 两个渠道各自独立；选了渠道但没勾天数时，默认按当天提醒
-    var taskOn = $('#fTask').checked;
-    var snackOn = $('#fSnack').checked;
-    d.remind = {
-      task: taskOn,
-      snack: snackOn,
-      // 兼容字段：仍在使用 2.0 的客户端读到 on 才知道「有提醒」
-      on: taskOn || snackOn,
-      offsets: offs.length ? offs : [0]
-    };
-    d.archived = $('#fArchived').checked;
+    d.remind = formRemind();
+    // 节日不参与归档（表单里也不显示这个开关）
+    d.archived = d.kind === 'festival' ? false : $('#fArchived').checked;
 
     if (d.calendar === 'lunar') {
       d.lunar = currentLunar();
-      var s = L.lunarToSolar(d.lunar.year, d.lunar.month, d.lunar.day, d.lunar.isLeap);
+      // 除夕这类「月最后一天」的预设：腊月只有廿九天时也记作三十，由核心逻辑回落
+      if (fp && fp.group === 'lunar' && fp.day === 30) d.lunar.day = 30;
+      var s = L.lunarToSolar(d.lunar.year, d.lunar.month, d.lunar.day, d.lunar.isLeap) ||
+        Core.resolveLunar(d.lunar.year, d.lunar.month, d.lunar.day, d.lunar.isLeap, 'regular');
       d.date = s ? Core.ymd(s) : '';
     } else {
       d.date = $('#fDate').value || '';
@@ -698,11 +937,68 @@
     return d;
   }
 
+  /**
+   * 批量添加选中的预设节日：每个预设一条，名称/历法/日期/颜色各按自己的预设，
+   * 提醒渠道、备注、归档这类公共设置共用当前表单
+   */
+  function saveBatch(keys) {
+    var note = $('#fNote').value.trim().slice(0, 200);
+    // 节日永远不会归档，不看那个开关
+    var archived = false;
+    var remind = formRemind();
+    var base = Date.now();
+    var created = [];
+
+    keys.forEach(function (k) {
+      var f = Core.festivalFields(k);
+      if (!f) return;
+      created.push({
+        id: Core.uid(),
+        title: f.title,
+        kind: 'festival',
+        calendar: f.calendar,
+        date: f.date,
+        lunar: f.lunar,
+        term: f.term,
+        preset: k,
+        repeat: true,
+        color: f.color,
+        note: note,
+        pinned: false,
+        remind: {
+          task: remind.task,
+          snack: remind.snack,
+          on: remind.on,
+          offsets: remind.offsets.slice()
+        },
+        archived: archived,
+        createdAt: base + created.length
+      });
+    });
+
+    if (!created.length) { toast('请选择节日'); return; }
+
+    Array.prototype.push.apply(state.data.events, created);
+    closeSheet();
+    persist();
+    renderAll();
+    toast('已添加 ' + created.length + ' 个节日');
+  }
+
   function saveSheet() {
     var editing = state.editingId;
-    var d = collect();
+    // 新建 + 类型是节日 + 多选了预设 → 一次批量加入
+    var kind = segValue('#fKind') || 'countdown';
+    var keys = (editing || kind !== 'festival') ? [] : selectedPresets();
+    if (keys.length > 1) { saveBatch(keys); return; }
 
-    if (!d.title) d.title = Core.KINDS[d.kind];
+    var d = collect();
+    delete d.presets;
+
+    if (!d.title) {
+      var pf = d.preset ? Core.festivalByKey(d.preset) : null;
+      d.title = pf ? pf.name : Core.KINDS[d.kind];
+    }
     if (!d.date) { toast('请选择日期'); return; }
 
     var events = state.data.events;
@@ -845,9 +1141,19 @@
       var b = e.target.closest('button');
       if (!b) return;
       setSeg('#fKind', b.dataset.v);
+      // 预设选择保留（切走再切回不用重选），是否走批量只由保存时的类型决定
+      if (!state.draft.presets) state.draft.presets = [];
       refreshRepeatRow();
+      refreshPresetRow(b.dataset.v);
+      refreshCalendarRow();
       // 新建时标题跟着类型走，编辑时保持「编辑日子」
       if (!state.editingId) $('#cdSheetTitle').textContent = '新建' + (Core.KINDS[b.dataset.v] || '日子');
+    });
+
+    $('#fPresets').addEventListener('click', function (e) {
+      var b = e.target.closest('.cd-preset');
+      if (!b) return;
+      togglePreset(b.dataset.k || null);
     });
 
     $('#fCalendar').addEventListener('click', function (e) {
@@ -899,6 +1205,9 @@
     $('#sHero').addEventListener('change', function () {
       updateSetting('hero', this.checked);
     });
+    $('#sStrike').addEventListener('change', function () {
+      updateSetting('strikeExpired', this.checked);
+    });
 
     $('#cdSave').addEventListener('click', saveSheet);
     $('#cdCancel').addEventListener('click', closeSheet);
@@ -919,6 +1228,7 @@
     buildYearSelect();
     buildMonthSelect();
     buildColors(Core.COLORS[0]);
+    buildPresets();
     bind();
     load();
     registerHooks();

@@ -25,7 +25,7 @@
   // 形如：cd:ev=e1;cy=2026-05-14   （cy = 本轮事件发生的公历日期）
   var MARK_RE = /cd:ev=([A-Za-z0-9_\-:]+);cy=(\d{4}-\d{2}-\d{2})/;
 
-  var ICONS = { birthday: '🎂', anniversary: '🎉', countdown: '⏳' };
+  var ICONS = { birthday: '🎂', anniversary: '🎉', countdown: '⏳', festival: '🎊' };
 
   var OFFSET_TEXT = { 0: '当天', 1: '提前 1 天', 3: '提前 3 天', 7: '提前 7 天', 30: '提前 30 天' };
 
@@ -108,7 +108,7 @@
     var t = Core.startOfDay(today);
     var title = iconOf(ev.kind) + ' ' + Core.titleOf(ev, Core.ageOn(ev, t));
     var typeText = Core.KINDS[ev.kind] || '日子';
-    var line2 = Core.dateLabel(ev) + (ev.repeat ? ' · 每年' : '');
+    var line2 = Core.dateLabel(ev, slot.occ) + (ev.repeat ? ' · 每年' : '');
     var notes = [
       typeText + ' · ' + line2,
       OFFSET_TEXT[slot.offset] + '提醒 · 应处理日 ' + Core.ymd(slot.date),

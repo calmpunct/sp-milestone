@@ -1,8 +1,8 @@
 {
   "id": "countdown-days",
   "name": "里程碑",
-  "version": "2.3.0",
-  "description": "里程碑：倒数日、纪念日与生日管理，支持农历生日换算、跨设备同步。",
+  "version": "2.5.1",
+  "description": "里程碑：倒数日、纪念日、生日与节日管理，支持农历换算与预设节日、跨设备同步。",
   "manifestVersion": 1,
   "minSupVersion": "14.0.0",
   "icon": "icon.svg",

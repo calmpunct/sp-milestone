@@ -451,7 +451,193 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     dom2.window.close();
   }
 
-  console.log('[17] 无运行时错误');
+  console.log('[17] 节日类型：预设与自定义');
+  document.querySelector('.cd-chip[data-f="all"]').click();
+  await wait(60);
+  const beforeFest = document.querySelectorAll('.cd-item').length;
+
+  $('#cdAdd').click();
+  await wait(150);
+  document.querySelector('#fKind button[data-v="festival"]').click();
+  await wait(60);
+  eq($('#cdSheetTitle').textContent, '新建节日', '标题切到新建节日');
+  eq($('#fPresetWrap').hidden, false, '节日类型显示预设列表');
+  eq($('#fArchiveWrap').hidden, true, '节日不显示归档开关（节日每年都会再来）');
+  eq($('#fRepeatWrap').hidden, true, '节日不显示「每年重复」开关（强制每年）');
+  eq(document.querySelectorAll('#fPresets .cd-preset').length, Core.FESTIVALS.length + 1, '预设按钮 = 全部预设 + 自定义');
+  eq(document.querySelector('#fPresets .cd-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'false', '初始未选中任何预设');
+  eq(document.querySelector('#fPresets .cd-preset[data-k=""]').getAttribute('aria-pressed'), 'true', '未选预设时「自定义」为按下态');
+
+  // 选中秋：名称、历法、日期、颜色一次填好
+  document.querySelector('#fPresets .cd-preset[data-k="zhongqiu"]').click();
+  await wait(80);
+  eq($('#fTitle').value, '中秋节', '名称自动填入');
+  eq(document.querySelector('#fKind button[aria-pressed="true"]').dataset.v, 'festival', '类型仍是节日');
+  eq(document.querySelector('#fCalendar button[aria-pressed="true"]').dataset.v, 'lunar', '中秋按农历');
+  eq($('#fLM').value, '8', '农历月份 8');
+  eq($('#fLD').value, '15', '农历十五');
+  eq($('#fDate').value, Core.festivalFields('zhongqiu', new Date()).date, '公历日期按下一次出现算出');
+  ok($('#fPresetHint').textContent.includes('农历'), '提示说明按农历计算');
+  eq(document.querySelector('#fPresets .cd-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'true', '中秋预设高亮');
+  // 预设已经把日期算好：历法与日期控件收起，避免重复输入
+  eq($('#fCalendarWrap').hidden, true, '选中预设时隐藏历法');
+  eq($('#fSolarWrap').hidden, true, '选中预设时隐藏公历日期');
+  eq($('#fLunarWrap').hidden, true, '选中预设时隐藏农历日期');
+  eq($('#fTitleWrap').hidden, false, '单选时名称仍可改');
+
+  // 切到生日应隐藏预设列表，切回来保留选择
+  document.querySelector('#fKind button[data-v="birthday"]').click();
+  await wait(60);
+  eq($('#fPresetWrap').hidden, true, '非节日类型隐藏预设');
+  document.querySelector('#fKind button[data-v="festival"]').click();
+  await wait(60);
+  eq($('#fPresetWrap').hidden, false, '切回节日恢复预设');
+  eq(document.querySelector('#fPresets .cd-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'true', '切回后仍记住中秋');
+
+  $('#cdSave').click();
+  await wait(450);
+  eq(document.querySelectorAll('.cd-item').length, beforeFest + 1, '节日已添加');
+  const festSaved = JSON.parse(window.__STORE__).events.filter((e) => e.title === '中秋节')[0];
+  ok(!!festSaved, '节日已写入数据');
+  eq(festSaved.kind, 'festival', '类型为节日');
+  eq(festSaved.preset, 'zhongqiu', '预设标识写入');
+  eq(festSaved.calendar, 'lunar', '历法写入');
+  eq(festSaved.lunar.month + '/' + festSaved.lunar.day, '8/15', '农历八月十五写入');
+  eq(festSaved.repeat, true, '节日每年重复');
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(festSaved.date), '公历日期已同步算出');
+
+  // 节日筛选 + 展示语义
+  document.querySelector('.cd-chip[data-f="festival"]').click();
+  await wait(60);
+  eq(document.querySelectorAll('.cd-item').length, 1, '节日筛选只有 1 条');
+  ok($('.cd-list').textContent.includes('中秋节'), '节日在列表中');
+  eq(document.querySelector('.cd-item .cd-tag').textContent, '节日', '条目标签显示节日');
+  ok($('.cd-hero-label').textContent.includes('还有'), '节日按剩余天数倒数');
+  eq(document.querySelector('.cd-item-num i').textContent === '剩余天数' ||
+    document.querySelector('.cd-item-num i').textContent === '就是今天', true, '单位是剩余天数');
+  ok($('.cd-sub').textContent.includes('节日'), '副标题按「节日」计数');
+
+  // 自定义节日
+  $('#cdAdd').click();
+  await wait(150);
+  eq(document.querySelector('#fKind button[aria-pressed="true"]').dataset.v, 'festival', '节日分区下新建默认节日');
+  eq(document.querySelector('#fPresets .cd-preset[data-k=""]').getAttribute('aria-pressed'), 'true', '新记录默认是自定义');
+  eq($('#fCalendarWrap').hidden, false, '自定义时显示历法');
+  eq($('#fSolarWrap').hidden, false, '自定义时显示日期');
+  $('#fTitle').value = '公司年会';
+  $('#fDate').value = '2027-01-20';
+  $('#fDate').dispatchEvent(new window.Event('change'));
+  await wait(40);
+  $('#cdSave').click();
+  await wait(450);
+  const customFest = JSON.parse(window.__STORE__).events.filter((e) => e.title === '公司年会')[0];
+  ok(!!customFest, '自定义节日已保存');
+  eq(customFest.kind, 'festival', '自定义节日类型');
+  eq(customFest.preset, null, '自定义节日没有预设标识');
+  eq(customFest.date, '2027-01-20', '自定义日期保留');
+  eq(document.querySelectorAll('.cd-item').length, 2, '节日分区两条');
+  document.querySelector('.cd-chip[data-f="all"]').click();
+  await wait(60);
+
+  console.log('[18] 预设节日批量添加（多选）');
+  const beforeBatch = document.querySelectorAll('.cd-item').length;
+  $('#cdAdd').click();
+  await wait(150);
+  document.querySelector('#fKind button[data-v="festival"]').click();
+  await wait(60);
+
+  // 一次勾三个
+  document.querySelector('#fPresets .cd-preset[data-k="chunjie"]').click();
+  await wait(60);
+  document.querySelector('#fPresets .cd-preset[data-k="yuanxiao"]').click();
+  await wait(60);
+  document.querySelector('#fPresets .cd-preset[data-k="qingming"]').click();
+  await wait(60);
+  eq(document.querySelectorAll('#fPresets .cd-preset[aria-pressed="true"]').length, 3, '三个预设同时选中');
+  eq(document.querySelector('#fPresets .cd-preset[data-k=""]').getAttribute('aria-pressed'), 'false', '多选时「自定义」不再是按下态');
+  eq($('#cdSave').textContent, '添加 3 个', '保存按钮显示数量');
+  eq($('#fTitleWrap').hidden, true, '多选时隐藏名称（每个节日用自己的名字）');
+  eq($('#fColorWrap').hidden, true, '多选时隐藏颜色（各用预设配色）');
+  eq($('#fCalendarWrap').hidden, true, '多选时隐藏历法');
+  ok($('#fPresetHint').textContent.includes('春节') && $('#fPresetHint').textContent.includes('3 个'), '提示列出已选节日');
+
+  // 再点一次取消选中
+  document.querySelector('#fPresets .cd-preset[data-k="yuanxiao"]').click();
+  await wait(60);
+  eq($('#cdSave').textContent, '添加 2 个', '取消一个后数量跟着变');
+  document.querySelector('#fPresets .cd-preset[data-k="yuanxiao"]').click();
+  await wait(60);
+  eq($('#cdSave').textContent, '添加 3 个', '重新选中恢复');
+
+  $('#cdSave').click();
+  await wait(500);
+  eq(document.querySelectorAll('.cd-item').length, beforeBatch + 3, '一次加入 3 个节日');
+
+  const batch = JSON.parse(window.__STORE__).events.filter((e) => e.title === '春节' || e.title === '元宵节' || e.title === '清明');
+  eq(batch.length, 3, '三个节日都已写入');
+  batch.forEach((e) => {
+    eq(e.kind, 'festival', e.title + ' 类型为节日');
+    eq(e.repeat, true, e.title + ' 每年重复');
+    ok(!!e.preset, e.title + ' 带预设标识');
+    ok(/^\d{4}-\d{2}-\d{2}$/.test(e.date), e.title + ' 日期已算好');
+  });
+  const cjSaved = batch.filter((e) => e.preset === 'chunjie')[0];
+  eq(cjSaved.calendar, 'lunar', '春节按农历');
+  eq(cjSaved.lunar.month + '/' + cjSaved.lunar.day, '1/1', '春节是正月初一');
+  eq(cjSaved.remind.task, true, '批量创建共用表单的提醒设置');
+  const qmSaved = batch.filter((e) => e.preset === 'qingming')[0];
+  eq(qmSaved.term, 'qingming', '清明的节气标识写入');
+
+  console.log('[19] 倒数日过期删除线');
+  eq($('#fRepeatWrap').hidden, true, '节日不显示倒数设置');
+  eq($('#fArchiveWrap').hidden, true, '节日不显示归档开关');
+  $('#cdAdd').click();
+  await wait(150);
+  document.querySelector('#fKind button[data-v="countdown"]').click();
+  await wait(60);
+  eq($('#fRepeatWrap').hidden, false, '倒数日显示倒数设置');
+  eq($('#fArchiveWrap').hidden, false, '倒数日显示归档开关');
+  ok($('#fRepeatWrap').textContent.includes('过期后重新开始倒数'), '重复开关文案改为「过期后重新开始倒数」');
+  ok($('#fRepeatHint').textContent.includes('明年的同一天'), '文案说明了打开后的效果');
+
+  $('#fRepeat').checked = false;
+  $('#fTitle').value = '去年年会';
+  $('#fDate').value = '2025-01-01';
+  $('#fDate').dispatchEvent(new window.Event('change'));
+  await wait(40);
+  $('#cdSave').click();
+  await wait(450);
+
+  const expired = JSON.parse(window.__STORE__).events.filter((e) => e.title === '去年年会')[0];
+  ok(!!expired, '过期倒数日已保存');
+  eq(expired.repeat, false, '关掉了重新开始倒数');
+  eq(byId(expired.id).querySelector('.cd-item-title em').textContent, '去年年会', '名称文字完整');
+  ok(!!byId(expired.id).querySelector('.cd-item-name--done span'), '过期倒数日名称加删除线（画在内层 span 上）');
+  eq(byId(expired.id).querySelector('.cd-tag').textContent, '过期的倒数日', '过期后标签改为「过期的倒数日」');
+  eq(byId(expired.id).querySelector('.cd-item-num i').textContent, '已过天数', '过期后显示已过天数');
+
+  // 设置里关掉删除线
+  $('#cdSettings').click();
+  await wait(150);
+  eq($('#sStrike').checked, true, '删除线开关默认打开');
+  $('#sStrike').click();
+  await wait(400);
+  eq(JSON.parse(window.__STORE__).settings.strikeExpired, false, '开关写入同步数据');
+  ok(!byId(expired.id).querySelector('.cd-item-name--done'), '关掉后名称不再划掉');
+  eq(byId(expired.id).querySelector('.cd-tag').textContent, '过期的倒数日', '标签仍标明过期（标签不受删除线开关影响）');
+  ok(!!byId(expired.id), '条目本身还在');
+
+  $('#sStrike').click();
+  await wait(400);
+  ok(!!byId(expired.id).querySelector('.cd-item-name--done span'), '重新打开后恢复删除线');
+  eq(JSON.parse(window.__STORE__).settings.strikeExpired, true, '开关值可恢复');
+  // 生日/纪念日/节日不受影响
+  ok(!document.querySelector('.cd-item[data-id="b2"] .cd-item-name--done'), '生日不加删除线');
+  eq(document.querySelector('.cd-item[data-id="b2"] .cd-tag').textContent, '生日', '生日的标签不变');
+  $('#cdSetClose').click();
+  await wait(420);
+
+  console.log('[20] 无运行时错误');
   eq(errors.length, 0, '控制台无报错' + (errors.length ? '：\n     ' + errors.join('\n     ') : ''));
 
   console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);

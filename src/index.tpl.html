@@ -41,6 +41,7 @@
     <button type="button" class="cd-chip" data-f="birthday" aria-pressed="false">生日</button>
     <button type="button" class="cd-chip" data-f="anniversary" aria-pressed="false">纪念日</button>
     <button type="button" class="cd-chip" data-f="countdown" aria-pressed="false">倒数日</button>
+    <button type="button" class="cd-chip" data-f="festival" aria-pressed="false">节日</button>
     <button type="button" class="cd-chip" data-f="archive" aria-pressed="false">归档</button>
   </div>
 
@@ -57,7 +58,7 @@
     </div>
     <div class="cd-sheet-body">
 
-      <label class="cd-field">
+      <label class="cd-field" id="fTitleWrap">
         <span class="cd-label">名称</span>
         <input class="cd-input" id="fTitle" type="text" maxlength="40" placeholder="例如：妈妈生日" autocomplete="off">
       </label>
@@ -68,10 +69,17 @@
           <button type="button" data-v="birthday">生日</button>
           <button type="button" data-v="anniversary">纪念日</button>
           <button type="button" data-v="countdown">倒数日</button>
+          <button type="button" data-v="festival">节日</button>
         </div>
       </div>
 
-      <div class="cd-field">
+      <div class="cd-field" id="fPresetWrap" hidden>
+        <span class="cd-label">预设节日</span>
+        <div class="cd-presets" id="fPresets"></div>
+        <p class="cd-hint" id="fPresetHint">选一个节日会自动填好日期和颜色；选「自定义」自己填。</p>
+      </div>
+
+      <div class="cd-field" id="fCalendarWrap">
         <span class="cd-label">历法</span>
         <div class="cd-seg" id="fCalendar">
           <button type="button" data-v="solar">公历</button>
@@ -99,14 +107,15 @@
       </div>
 
       <div class="cd-field" id="fRepeatWrap">
-        <span class="cd-label">重复</span>
+        <span class="cd-label">倒数设置</span>
         <div class="cd-switch-row">
-          <span>每年重复</span>
+          <span>过期后重新开始倒数</span>
           <label class="cd-switch">
             <input type="checkbox" id="fRepeat">
             <i></i>
           </label>
         </div>
+        <p class="cd-hint" id="fRepeatHint">打开：日子过了会自动滚到明年的同一天，继续倒数。关掉：过了就停在「已过天数」，不再重置。</p>
       </div>
 
       <div class="cd-field" id="fRemindWrap">
@@ -147,7 +156,7 @@
         <p class="cd-hint">归档适合放不重要的日子：不在「全部」里显示，也不会提醒，随时可以取消归档。</p>
       </div>
 
-      <div class="cd-field">
+      <div class="cd-field" id="fColorWrap">
         <span class="cd-label">颜色</span>
         <div class="cd-colors" id="fColors"></div>
       </div>
@@ -182,6 +191,18 @@
           </label>
         </div>
         <p class="cd-hint">打开后顶部会放大显示<b>当前分区</b>排在最前的那一条；关掉则列表直接贴顶，一屏能多看几条。</p>
+      </div>
+
+      <div class="cd-field">
+        <span class="cd-label">显示</span>
+        <div class="cd-switch-row">
+          <span>倒数日过期后名称加删除线</span>
+          <label class="cd-switch">
+            <input type="checkbox" id="sStrike">
+            <i></i>
+          </label>
+        </div>
+        <p class="cd-hint">只影响「倒数日」里<b>没有打开「过期后重新开始倒数」</b>、日期已经过去的条目：名称划一条线表示这件事已经结束。生日、纪念日与节日不受影响。</p>
       </div>
 
       <div class="cd-field">
