@@ -14,6 +14,9 @@
   var DAY_MS = 86400000;
   var WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
+  var YMD_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+  var HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
   var KINDS = { birthday: '生日', anniversary: '纪念日', countdown: '倒数日', festival: '节日' };
 
   /**
@@ -72,11 +75,13 @@
 
   var FESTIVAL_GROUPS = { solar: '公历', lunar: '农历', term: '节气' };
 
+  var FESTIVAL_MAP = null;
   function festivalByKey(key) {
-    for (var i = 0; i < FESTIVALS.length; i++) {
-      if (FESTIVALS[i].key === key) return FESTIVALS[i];
+    if (!FESTIVAL_MAP) {
+      FESTIVAL_MAP = Object.create(null);
+      for (var i = 0; i < FESTIVALS.length; i++) FESTIVAL_MAP[FESTIVALS[i].key] = FESTIVALS[i];
     }
-    return null;
+    return (key && FESTIVAL_MAP[key]) || null;
   }
 
   // 日期 -> 当天零点（本地时区），用于天数差计算
@@ -93,26 +98,38 @@
     return Math.round((dayTs(b) - dayTs(a)) / DAY_MS);
   }
 
+  /** 同上，但基准日期已经折算成 UTC 天数（避免循环里反复取 a 的日号） */
+  function daysFromTs(aTs, b) {
+    return Math.round((dayTs(b) - aTs) / DAY_MS);
+  }
+
   function ymd(d) {
     return d.getFullYear() + '-' + Lunar.pad2(d.getMonth() + 1) + '-' + Lunar.pad2(d.getDate());
   }
 
   function parseYMD(s) {
     if (!s || typeof s !== 'string') return null;
-    var m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s.trim());
+    var m = YMD_RE.exec(s.trim());
     if (!m) return null;
-    var d = new Date(+m[1], +m[2] - 1, +m[3]);
-    if (isNaN(d.getTime())) return null;
-    if (d.getMonth() !== +m[2] - 1) return null;
-    return d;
+    var y = +m[1], mo = +m[2], d = +m[3];
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    var dt = new Date(y, mo - 1, d);
+    if (isNaN(dt.getTime())) return null;
+    // 溢出（2 月 30 日等）会滚到下个月，回读月/日即可识别
+    if (dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+    return dt;
   }
 
   function cnDate(d) {
     return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + WEEK[d.getDay()];
   }
 
+  var uidSeq = 0;
   function uid() {
-    return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    // 同一毫秒内连续 uid 也不会重复（随机段相同的情况下靠序号区分）
+    uidSeq = (uidSeq + 1) % 1296;
+    return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) +
+      uidSeq.toString(36);
   }
 
   var COLORS = ['#e8590c', '#d6336c', '#7048e8', '#1c7ed6', '#0ca678', '#f59f00', '#c92a2a', '#5c7cfa'];
@@ -168,6 +185,7 @@
     }
 
     var list = Array.isArray(raw.events) ? raw.events : [];
+    var usedIds = {};
     data.events = list.map(function (e, i) {
       if (!e || typeof e !== 'object') return null;
 
@@ -177,7 +195,8 @@
       // 节气：日期由公式推算，不落死日期
       var term = typeof e.term === 'string' && TERMS[e.term] ? e.term : null;
 
-      var date = parseYMD(e.date) ? ymd(parseYMD(e.date)) : null;
+      var parsed = parseYMD(e.date);
+      var date = parsed ? ymd(parsed) : null;
       var lunar = null;
       if (!term && e.lunar && typeof e.lunar === 'object') {
         var lm = Math.round(+e.lunar.month), ld = Math.round(+e.lunar.day), ly = Math.round(+e.lunar.year);
@@ -202,8 +221,13 @@
       }
       if (!date) return null;
 
+      var id = typeof e.id === 'string' && e.id ? e.id : 'e' + i + Date.now().toString(36);
+      // 历史数据里可能有重复 id：重复的重新发一个，否则编辑/删除会张冠李戴
+      if (usedIds[id]) id = uid();
+      usedIds[id] = true;
+
       return {
-        id: typeof e.id === 'string' && e.id ? e.id : 'e' + i + Date.now().toString(36),
+        id: id,
         title: cleanTitle(kind, typeof e.title === 'string' ? e.title.slice(0, 80) : ''),
         kind: kind,
         calendar: calendar,
@@ -212,7 +236,7 @@
         term: term,
         preset: preset,
         repeat: e.repeat === 'yearly' || kind !== 'countdown',
-        color: typeof e.color === 'string' && /^#[0-9a-f]{6}$/i.test(e.color) ? e.color : COLORS[0],
+        color: typeof e.color === 'string' && HEX_COLOR_RE.test(e.color) ? e.color : COLORS[0],
         note: typeof e.note === 'string' ? e.note.slice(0, 300) : '',
         pinned: !!e.pinned,
         remind: normalizeRemind(e.remind, legacy),
@@ -294,12 +318,15 @@
   }
 
   function nextSolar(ev, t) {
+    var tTs = dayTs(t);
+
     // 节气节日（清明）：日期每年由公式推算
     if (ev.term && TERMS[ev.term]) {
       for (var k = 0; k < 8; k++) {
         var tc = termDate(ev.term, t.getFullYear() + k);
-        if (tc && diffDays(t, tc) >= 0) {
-          return { date: tc, days: diffDays(t, tc), isPast: false, index: k };
+        if (tc && daysFromTs(tTs, tc) >= 0) {
+          var kd = daysFromTs(tTs, tc);
+          return { date: tc, days: kd, isPast: false, index: k };
         }
       }
       return { date: null, days: 0, isPast: true, index: 0 };
@@ -309,7 +336,7 @@
     if (!base) return { date: null, days: 0, isPast: true, index: 0 };
 
     if (!ev.repeat) {
-      var dd = diffDays(t, base);
+      var dd = daysFromTs(tTs, base);
       return { date: base, days: dd, isPast: dd < 0, index: 0 };
     }
 
@@ -317,8 +344,9 @@
     for (var j = 0; j < 8; j++) {
       var year = t.getFullYear() + j;
       var cand = safeYM(year, base.getMonth(), base.getDate());
-      if (diffDays(t, cand) >= 0) {
-        return { date: cand, days: diffDays(t, cand), isPast: false, index: j };
+      var cd = daysFromTs(tTs, cand);
+      if (cd >= 0) {
+        return { date: cand, days: cd, isPast: false, index: j };
       }
     }
     return { date: null, days: 0, isPast: true, index: 0 };
@@ -333,12 +361,13 @@
   function nextLunar(ev, t) {
     var lunar = ev.lunar;
     var policy = 'regular';
+    var tTs = dayTs(t);
 
     if (!ev.repeat) {
       // 一次性农历日期：就是指定农历年那天
       var fixed = resolveLunar(lunar.year, lunar.month, lunar.day, lunar.isLeap, 'regular');
       if (!fixed) return { date: null, days: 0, isPast: true, index: 0 };
-      var d = diffDays(t, fixed);
+      var d = daysFromTs(tTs, fixed);
       return { date: fixed, days: d, isPast: d < 0, index: 0, lunarYear: lunar.year };
     }
 
@@ -349,10 +378,11 @@
       if (ly < Lunar.MIN_YEAR || ly > Lunar.MAX_YEAR) continue;
       var cand = resolveLunar(ly, lunar.month, lunar.day, lunar.isLeap, policy);
       if (!cand) continue;
-      if (diffDays(t, cand) >= 0) {
+      var cd = daysFromTs(tTs, cand);
+      if (cd >= 0) {
         return {
           date: cand,
-          days: diffDays(t, cand),
+          days: cd,
           isPast: false,
           index: k + 1,
           lunarYear: ly
@@ -468,7 +498,7 @@
   }
 
   /** 当前周期已过百分比（用于进度条），仅在每年重复时有意义 */
-  function cycleProgress(ev, occ) {
+  function cycleProgress(ev, occ, today) {
     if (!ev.repeat || !occ || !occ.date || occ.days < 0) return null;
     var prev;
     if (ev.term && TERMS[ev.term]) {
@@ -485,7 +515,7 @@
     if (!prev) return null;
     var total = diffDays(prev, occ.date);
     if (total <= 0) return null;
-    var done = diffDays(prev, startOfDay(new Date()));
+    var done = diffDays(prev, startOfDay(today || new Date()));
     return Math.max(0, Math.min(1, done / total));
   }
 

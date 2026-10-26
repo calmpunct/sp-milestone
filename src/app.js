@@ -53,18 +53,33 @@
 
   /* ================= 工具 ================= */
 
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
+  var ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  var ESC_RE = /[&<>"']/g;
+
+  function escChar(c) {
+    return ESC_MAP[c];
   }
 
+  function esc(s) {
+    return String(s == null ? '' : s).replace(ESC_RE, escChar);
+  }
+
+  // 颜色参与每次渲染，结果按 hex 缓存，避免重复 parseInt
+  var rgbCache = Object.create(null);
+  var rgbCacheCount = 0;
+
   function hexToRgb(hex) {
-    var h = String(hex || '').replace('#', '');
-    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-    var n = parseInt(h, 16);
-    if (isNaN(n)) return [63, 81, 181];
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    var h = String(hex || '');
+    var hit = rgbCache[h];
+    if (hit) return hit;
+
+    var s = h.replace('#', '');
+    if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+    var n = parseInt(s, 16);
+    var out = isNaN(n) ? [63, 81, 181] : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    // 用户自定义颜色理论上无限，缓存加个上限防止长期累积
+    if (rgbCacheCount < 128) { rgbCache[h] = out; rgbCacheCount++; }
+    return out;
   }
 
   function parseColor(v) {
@@ -79,14 +94,16 @@
   var toastTimer = null;
   function toast(msg) {
     var el = $('#cdToast');
+    if (!el) return;
     el.textContent = msg;
     el.classList.add('on');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.classList.remove('on'); }, 1800);
+    toastTimer = setTimeout(function () { el.classList.remove('on'); toastTimer = null; }, 1800);
   }
 
   function detectTheme() {
     var html = document.documentElement;
+    if (!html) return;
     var cs = window.getComputedStyle(html);
     var flag = (cs.getPropertyValue('--is-dark-theme') || '').trim();
     var dark = null;
@@ -101,6 +118,70 @@
     }
     var next = dark ? 'dark' : 'light';
     if (html.getAttribute('data-cd-theme') !== next) html.setAttribute('data-cd-theme', next);
+  }
+
+  /**
+   * 主题跟随宿主：宿主切主题时会改 <html>/<body> 的属性或匹配系统深色，
+   * 因此用「变化时触发 + 低频兜底」替代原来每 3 秒无条件读一次计算样式
+   * （getComputedStyle 会强制样式重算，在后台标签页里纯属浪费）。
+   */
+  var themeTimer = null;
+  var themeObserver = null;
+
+  function isPageHidden() {
+    return document.visibilityState === 'hidden' || document.hidden === true;
+  }
+
+  function onVisibility() {
+    if (!isPageHidden()) detectTheme();
+  }
+
+  function watchTheme() {
+    if (typeof window.MutationObserver === 'function') {
+      try {
+        themeObserver = new window.MutationObserver(detectTheme);
+        themeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['class', 'style', 'data-theme', 'data-cd-theme']
+        });
+        if (document.body) {
+          themeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class', 'style', 'data-theme']
+          });
+        }
+      } catch (e) {
+        themeObserver = null;
+      }
+    }
+
+    if (window.matchMedia) {
+      try {
+        var mq = window.matchMedia('(prefers-color-scheme: dark)');
+        if (mq && typeof mq.addEventListener === 'function') mq.addEventListener('change', detectTheme);
+        else if (mq && typeof mq.addListener === 'function') mq.addListener(detectTheme);
+      } catch (e) { /* 旧 WebView 不支持媒体查询监听 */ }
+    }
+
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // 宿主若只改 CSS 变量的值（属性不变），观察器收不到通知，靠这个低频兜底
+    if (themeTimer) clearInterval(themeTimer);
+    themeTimer = setInterval(function () {
+      if (isPageHidden()) return;
+      detectTheme();
+    }, 8000);
+  }
+
+  /** 页面卸载时把定时器/观察器都收掉，避免 iframe 反复重建时残留 */
+  function teardown() {
+    if (themeTimer) { clearInterval(themeTimer); themeTimer = null; }
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    if (sheetTimer) { clearTimeout(sheetTimer); sheetTimer = null; }
+    if (setTimer) { clearTimeout(setTimer); setTimer = null; }
+    if (themeObserver) { themeObserver.disconnect(); themeObserver = null; }
+    document.removeEventListener('visibilitychange', onVisibility);
   }
 
   /* ================= 渲染 ================= */
@@ -125,14 +206,20 @@
     return { mode: 'remaining', days: occ.days, date: occ.date };
   }
 
-  function computeRows() {
-    var today = new Date();
+  /**
+   * 一次性算好这一屏用到的派生数据：下一次发生日、天数语义、日期标签、带年龄的名称。
+   * 之前 itemHtml 与 renderHero 各自又算一遍，同一条记录每次渲染要重复换算 2-3 次农历。
+   */
+  function computeRows(today) {
     return state.data.events.map(function (ev) {
       var occ = Core.nextOccurrence(ev, today);
       return {
-        ev: ev, occ: occ,
+        ev: ev,
+        occ: occ,
         years: Core.yearsSince(ev, occ),
-        metric: metricOf(ev, occ, today)
+        metric: metricOf(ev, occ, today),
+        label: Core.dateLabel(ev, occ),
+        name: Core.titleOf(ev, Core.ageOn(ev, today))
       };
     });
   }
@@ -157,8 +244,8 @@
   }
 
   /** 名称（生日带年龄，如「我妈生日（55岁）」） */
-  function nameOf(ev) {
-    return Core.titleOf(ev, Core.ageOn(ev, new Date()));
+  function nameOf(ev, today) {
+    return Core.titleOf(ev, Core.ageOn(ev, today || new Date()));
   }
 
   function renderSub(rows, archivedCount) {
@@ -196,11 +283,8 @@
   }
 
   /** 分区为空时的等高占位，避免切换分类时卡片突然消失、页面跳动 */
-  function renderHeroPlaceholder(title, hint) {
-    var el = $('#cdHero');
-    el.style.setProperty('--cd-rc', '128, 138, 155');
-    el.innerHTML =
-      '<div class="cd-hero cd-hero--empty">' +
+  function heroPlaceholderHtml(title, hint) {
+    return '<div class="cd-hero cd-hero--empty">' +
         '<div class="cd-hero-label">' + esc(title) + '</div>' +
         '<div class="cd-hero-num cd-hero-num--empty">—</div>' +
         '<div class="cd-hero-meta">' + esc(hint) + '</div>' +
@@ -214,51 +298,62 @@
     return ['里程碑', '点右上角「添加」记下第一个日子'];
   }
 
-  function renderHero(row) {
+  // 上一次渲染出的卡片内容：一致就不碰 DOM（省一次重排，也不会重播入场动画）
+  var heroKey = '';
+
+  function renderHero(row, today) {
     var el = $('#cdHero');
+    var rc;
+    var html;
+
     if (!row || row.metric.mode === 'none') {
       var t = heroEmptyText();
-      renderHeroPlaceholder(t[0], t[1]);
-      return;
+      rc = '128, 138, 155';
+      html = heroPlaceholderHtml(t[0], t[1]);
+    } else {
+      var ev = row.ev;
+      var occ = row.occ;
+      var m = row.metric;
+      var remain = m.mode === 'remaining';
+      rc = hexToRgb(ev.color).join(',');
+
+      var label = remain
+        ? '距离 <b>' + esc(row.name) + '</b> 还有'
+        : '<b>' + esc(row.name) + '</b> 已经走过';
+
+      var heroCls = remain ? 'cd-hero-num cd-hero-num--remain' : 'cd-hero-num cd-hero-num--elapsed';
+      var num = '<div class="' + heroCls + '">' +
+          m.days + '<span>' + (remain ? '剩余天数' : '已过天数') + '</span></div>';
+
+      var lf = L.solarToLunar(occ.date);
+      var meta = [
+        Core.cnDate(occ.date),
+        L.lunarText(lf.month, lf.day, lf.isLeap),
+        ageText(row)
+      ].filter(Boolean).join('<i class="sep">·</i>');
+
+      var bar = '';
+      var p = Core.cycleProgress(ev, occ, today);
+      if (p !== null) {
+        bar =
+          '<div class="cd-bar"><i style="width:' + Math.round(p * 100) + '%"></i></div>' +
+          '<div class="cd-bar-text"><span>本年度已过 ' + Math.round(p * 100) + '%</span><span>共 365 天</span></div>';
+      }
+
+      html =
+        '<div class="cd-hero" data-id="' + esc(ev.id) + '">' +
+          '<div class="cd-hero-label">' + label + '</div>' +
+          num +
+          '<div class="cd-hero-meta">' + meta + '</div>' +
+          bar +
+        '</div>';
     }
 
-    var ev = row.ev;
-    var occ = row.occ;
-    var m = row.metric;
-    var remain = m.mode === 'remaining';
-    var rgb = hexToRgb(ev.color).join(',');
-    el.style.setProperty('--cd-rc', rgb);
-
-    var label = remain
-      ? '距离 <b>' + esc(nameOf(ev)) + '</b> 还有'
-      : '<b>' + esc(nameOf(ev)) + '</b> 已经走过';
-
-    var heroCls = remain ? 'cd-hero-num cd-hero-num--remain' : 'cd-hero-num cd-hero-num--elapsed';
-    var num = '<div class="' + heroCls + '">' +
-        m.days + '<span>' + (remain ? '剩余天数' : '已过天数') + '</span></div>';
-
-    var lf = L.solarToLunar(occ.date);
-    var meta = [
-      Core.cnDate(occ.date),
-      L.lunarText(lf.month, lf.day, lf.isLeap),
-      ageText(row)
-    ].filter(Boolean).join('<i class="sep">·</i>');
-
-    var bar = '';
-    var p = Core.cycleProgress(ev, occ);
-    if (p !== null) {
-      bar =
-        '<div class="cd-bar"><i style="width:' + Math.round(p * 100) + '%"></i></div>' +
-        '<div class="cd-bar-text"><span>本年度已过 ' + Math.round(p * 100) + '%</span><span>共 365 天</span></div>';
-    }
-
-    el.innerHTML =
-      '<div class="cd-hero" data-id="' + esc(ev.id) + '">' +
-        '<div class="cd-hero-label">' + label + '</div>' +
-        num +
-        '<div class="cd-hero-meta">' + meta + '</div>' +
-        bar +
-      '</div>';
+    var key = rc + '|' + html;
+    if (key === heroKey) return;
+    heroKey = key;
+    el.style.setProperty('--cd-rc', rc);
+    el.innerHTML = html;
   }
 
   /** 倒数日已经过期（关掉了「过期后重新开始倒数」，且日子已经过去） */
@@ -295,7 +390,8 @@
       numCls = ' cd-item-num--elapsed';
     }
 
-    var sub = Core.dateLabel(ev, r.occ);
+    // 日期标签在 computeRows 里已经算好，这里不再重复换算农历
+    var sub = r.label;
     var age = ageText(r);
     if (age) sub += ' · ' + age;
 
@@ -319,7 +415,7 @@
         ' style="--cd-rc:' + rgb + ';--cd-rc-color:rgb(' + rgb + ')" role="button" tabindex="0">' +
         '<div class="cd-item-main">' +
           '<div class="cd-item-title"><em' + (done ? ' class="cd-item-name--done"' : '') + '>' +
-            '<span>' + esc(nameOf(ev)) + '</span>' +
+            '<span>' + esc(r.name) + '</span>' +
             '</em>' + bell + tag + '</div>' +
           '<div class="cd-item-sub">' + esc(sub) + '</div>' +
         '</div>' +
@@ -359,9 +455,15 @@
       '</div>';
   }
 
+  // 上一次渲染出的列表内容：没变化就不写 innerHTML，避免整表重建与动画重播
+  var listKey = null;
+
   function renderList(list) {
     var el = $('#cdList');
-    el.innerHTML = list.length ? list.map(itemHtml).join('') : emptyHtml();
+    var html = list.length ? list.map(itemHtml).join('') : emptyHtml();
+    if (html === listKey) return;
+    listKey = html;
+    el.innerHTML = html;
   }
 
   /** 当前是否在「归档」视图 */
@@ -381,15 +483,18 @@
   }
 
   function renderAll() {
-    var all = sortRows(computeRows());
+    var today = new Date();
+    var all = sortRows(computeRows(today));
     var active = all.filter(function (r) { return !r.ev.archived; });
     var archivedCount = all.length - active.length;
     var rows = visibleRows(all);
     var settings = state.data.settings || Core.emptySettings();
 
     if (settings.hero === false) {
-      var hero = $('#cdHero');
-      hero.innerHTML = '';
+      if (heroKey !== '') {
+        heroKey = '';
+        $('#cdHero').innerHTML = '';
+      }
     } else {
       // 置顶卡片跟随当前分区：取该分区排序后的第一条；归档视图不置顶
       var first = null;
@@ -398,7 +503,7 @@
           if (rows[i].metric.mode !== 'none') { first = rows[i]; break; }
         }
       }
-      renderHero(first);
+      renderHero(first, today);
     }
 
     renderList(rows);
@@ -850,14 +955,21 @@
   }
 
   var sheetTimer = null;
-  function openSheet(id) {
-    state.editingId = id || null;
-    var ev = null;
-    if (id) {
-      for (var i = 0; i < state.data.events.length; i++) {
-        if (state.data.events[i].id === id) { ev = state.data.events[i]; break; }
-      }
+
+  function findEventById(id) {
+    if (!id) return null;
+    var events = state.data.events;
+    for (var i = 0; i < events.length; i++) {
+      if (events[i].id === id) return events[i];
     }
+    return null;
+  }
+
+  function openSheet(id) {
+    var ev = findEventById(id);
+    // 条目已被删除（或跨设备同步时被抹掉）：退回「新建」，否则保存会落到一个不存在的 id 上
+    if (!ev) id = null;
+    state.editingId = id;
     state.draft = ev ? JSON.parse(JSON.stringify(ev)) : newDraft(kindOfFilter(state.filter));
     fillSheet(state.draft, !!ev);
 
@@ -978,7 +1090,8 @@
 
     if (!created.length) { toast('请选择节日'); return; }
 
-    Array.prototype.push.apply(state.data.events, created);
+    // 逐个 push：一次加几十个也不会超出 apply 的参数上限
+    for (var i = 0; i < created.length; i++) state.data.events.push(created[i]);
     closeSheet();
     persist();
     renderAll();
@@ -1002,16 +1115,20 @@
     if (!d.date) { toast('请选择日期'); return; }
 
     var events = state.data.events;
+    var replaced = false;
     if (editing) {
       for (var i = 0; i < events.length; i++) {
         if (events[i].id === editing) {
           d.id = editing;
           d.createdAt = events[i].createdAt || Date.now();
           events[i] = d;
+          replaced = true;
           break;
         }
       }
-    } else {
+    }
+    if (!replaced) {
+      // 编辑期间该条被同步删除：按新建落库，别让用户刚填的内容无声消失
       d.id = Core.uid();
       d.createdAt = Date.now();
       events.push(d);
@@ -1020,7 +1137,7 @@
     closeSheet();
     persist();
     renderAll();
-    toast(editing ? '已更新' : '已添加');
+    toast(replaced ? '已更新' : '已添加');
   }
 
   function confirmDialog(title, okLabel) {
@@ -1038,9 +1155,7 @@
   function deleteEvent() {
     var id = state.editingId;
     if (!id) return;
-    var ev = null;
-    var events = state.data.events;
-    for (var i = 0; i < events.length; i++) if (events[i].id === id) { ev = events[i]; break; }
+    var ev = findEventById(id);
     if (!ev) return;
 
     confirmDialog('确定删除「' + nameOf(ev) + '」吗？').then(function (ok) {
@@ -1070,14 +1185,25 @@
     }, 200);
   }
 
+  /** 宿主可能回传字符串，也可能直接给对象；两种都接受，坏数据返回 null */
+  function parseStored(raw) {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw;
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
+  }
+
   function load() {
     return Store.load().then(function (raw) {
       if (raw) {
-        try {
-          var parsed = JSON.parse(raw);
+        var parsed = parseStored(raw);
+        if (parsed) {
           state.data = Core.normalize(parsed);
           state.lastWritten = JSON.stringify(state.data);
-        } catch (e) {
+        } else {
           state.data = Core.emptyData();
         }
       }
@@ -1094,8 +1220,10 @@
       P.registerHook(key, function () {
         Store.load().then(function (raw) {
           if (!raw || raw === state.lastWritten) return;
+          var parsed = parseStored(raw);
+          if (!parsed) return;   // 忽略损坏数据
           try {
-            var next = Core.normalize(JSON.parse(raw));
+            var next = Core.normalize(parsed);
             var nextJson = JSON.stringify(next);
             if (nextJson === JSON.stringify(state.data)) return;
             state.data = next;
@@ -1232,8 +1360,8 @@
     bind();
     load();
     registerHooks();
-    setInterval(detectTheme, 3000);
-    window.addEventListener('resize', detectTheme);
+    // 主题改为「宿主属性变化即触发 + 8 秒兜底」，不再每 3 秒强制读一次计算样式
+    watchTheme();
   }
 
   var tries = 0;
@@ -1245,6 +1373,8 @@
     }
     init();
   }
+
+  window.addEventListener('pagehide', teardown);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);

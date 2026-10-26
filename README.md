@@ -27,7 +27,7 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，**�
 
 1. 打开 Super Productivity → `设置` → `插件`
 2. 点击 `Choose Plugin File`（选择插件文件）
-3. 选中 `releases/countdown-days-v2.5.1.zip`
+3. 选中 `releases/countdown-days-v2.5.2.zip`
 4. 安装后，左侧导航出现「里程碑」入口
 
 > 不需要解压 ZIP。网页版因浏览器跨域限制无法自动下载，请手动下载 ZIP 后用同样方式安装。
@@ -284,9 +284,9 @@ test/               六组测试
   "author": "<you>",
   "id": "countdown-days",
   "release": {
-    "version": "2.5.1",
-    "downloadUrl": "https://github.com/<you>/super-productivity-milestone/releases/download/v2.5.1/countdown-days-v2.5.1.zip",
-    "sha256": "d16243228fae5d5b3e1a53188c4d98f79c59e6bb74629eb718ea6dcb55c9afb7"
+    "version": "2.5.2",
+    "downloadUrl": "https://github.com/<you>/super-productivity-milestone/releases/download/v2.5.2/countdown-days-v2.5.2.zip",
+    "sha256": "a3883f2695b7cf7627c13101a16d6dcff92d0d319b9ede571e0b485f6b4fcab4"
   }
 }
 ```

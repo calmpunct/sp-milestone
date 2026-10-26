@@ -77,14 +77,36 @@
     return (INFO[y - MIN_YEAR] & (0x10000 >> m)) ? 30 : 29;
   }
 
+  /** 该农历年总天数（原始计算，供建索引时用） */
+  function rawYearDays(y) {
+    var info = INFO[y - MIN_YEAR];
+    var sum = 348;
+    for (var i = 0x8000; i > 0x8; i >>= 1) {
+      sum += (info & i) ? 1 : 0;
+    }
+    return sum + ((info & 0xf) ? ((info & 0x10000) ? 30 : 29) : 0);
+  }
+
+  /* 每年天数与「该年正月初一距 1900-01-31 的天数」索引表。
+   * 换算时直接按前缀和定位年份，避免每次从 1900 年逐年累加（原为 O(年份数)）。 */
+  var YEAR_LEN = new Array(MAX_YEAR - MIN_YEAR + 1);
+  var YEAR_OFF = new Array(MAX_YEAR - MIN_YEAR + 1);
+  (function buildIndex() {
+    var sum = 0;
+    for (var y = MIN_YEAR; y <= MAX_YEAR; y++) {
+      var n = rawYearDays(y);
+      YEAR_LEN[y - MIN_YEAR] = n;
+      YEAR_OFF[y - MIN_YEAR] = sum;
+      sum += n;
+    }
+  })();
+
+  var LAST_IDX = MAX_YEAR - MIN_YEAR;
+
   /** 该农历年总天数 */
   function yearDays(y) {
     if (!inRange(y)) return 0;
-    var sum = 348;
-    for (var i = 0x8000; i > 0x8; i >>= 1) {
-      sum += (INFO[y - MIN_YEAR] & i) ? 1 : 0;
-    }
-    return sum + leapDays(y);
+    return YEAR_LEN[y - MIN_YEAR];
   }
 
   function pad2(n) {
@@ -107,19 +129,20 @@
       return { year: MIN_YEAR, month: 1, day: 1, isLeap: false, monthDays: 29, outOfRange: true };
     }
 
-    var y, tmp = 0;
-    for (y = MIN_YEAR; y < MAX_YEAR && offset > 0; y++) {
-      tmp = yearDays(y);
-      offset -= tmp;
-    }
-    if (offset < 0) {
-      offset += tmp;
-      y--;
-    }
+    // 用平均年长先估一个下标，再按前缀和向前/向后校正（最多挪几天，不必从 1900 年扫）
+    var idx = Math.floor(offset / 354.367);
+    if (idx < 0) idx = 0;
+    else if (idx > LAST_IDX) idx = LAST_IDX;
+    while (idx > 0 && YEAR_OFF[idx] > offset) idx--;
+    while (idx < LAST_IDX && YEAR_OFF[idx + 1] <= offset) idx++;
+
+    var y = MIN_YEAR + idx;
+    offset -= YEAR_OFF[idx];
 
     var leap = leapMonth(y);
     var isLeap = false;
     var m;
+    var tmp = 0;
     for (m = 1; m < 13 && offset > 0; m++) {
       if (leap > 0 && m === leap + 1 && !isLeap) {
         --m;
@@ -170,8 +193,8 @@
     var leap = leapMonth(ly);
     if (isLeap && leap !== lm) return null;
 
-    var offset = 0;
-    for (var y = MIN_YEAR; y < ly; y++) offset += yearDays(y);
+    // 前缀和直接定位该年正月初一，省掉从 1900 年逐年累加
+    var offset = YEAR_OFF[ly - MIN_YEAR];
 
     for (var m = 1; m < lm; m++) {
       offset += monthDays(ly, m);

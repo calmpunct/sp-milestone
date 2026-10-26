@@ -29,6 +29,37 @@
   var pendingReason = null;
   var projectIdCache = null;
 
+  // 上一次解析过的原始数据：内容没变就不重复 JSON.parse + normalize
+  var rawKey = '';
+  var rawValue = null;
+
+  // 对账过程中自己删掉的任务：宿主随后投递的 TASK_DELETE 不应该再触发一轮重建
+  var selfDeleted = Object.create(null);
+  var SELF_DELETE_TTL = 8000;
+
+  function markSelfDelete(id) {
+    if (!id) return;
+    var now = Date.now();
+    selfDeleted[id] = now;
+    var keys = Object.keys(selfDeleted);
+    if (keys.length > 64) {
+      for (var i = 0; i < keys.length; i++) {
+        if (now - selfDeleted[keys[i]] > SELF_DELETE_TTL) delete selfDeleted[keys[i]];
+      }
+    }
+  }
+
+  function unmarkSelfDelete(id) {
+    if (id) delete selfDeleted[id];
+  }
+
+  function isSelfDelete(id) {
+    var ts = selfDeleted[id];
+    if (!ts) return false;
+    if (Date.now() - ts > SELF_DELETE_TTL) { delete selfDeleted[id]; return false; }
+    return true;
+  }
+
   function P() {
     return window.PluginAPI || null;
   }
@@ -65,12 +96,26 @@
       return Promise.reject(new Error('API 不可用'));
     }
     return Promise.resolve(api.loadSyncedData()).then(function (raw) {
-      if (!raw) return EventCore.normalize(null);
-      try {
-        return EventCore.normalize(JSON.parse(raw));
-      } catch (e) {
-        return EventCore.normalize(null);
+      var isStr = typeof raw === 'string';
+      var key = isStr ? raw : '';
+      // 同步数据没变化时直接复用上次的规范化结果（10 分钟一轮的定时对账常走这条）
+      if (key && rawValue && rawKey === key) return rawValue;
+
+      var data;
+      if (!raw) {
+        data = EventCore.normalize(null);
+      } else if (!isStr) {
+        data = EventCore.normalize(raw);
+      } else {
+        try {
+          data = EventCore.normalize(JSON.parse(raw));
+        } catch (e) {
+          data = EventCore.normalize(null);
+        }
       }
+      rawKey = key;
+      rawValue = data;
+      return data;
     }, function () { return EventCore.normalize(null); });
   }
 
@@ -93,7 +138,10 @@
     if (delKey) {
       try {
         api.registerHook(delKey, function (payload) {
-          scheduleRebuild(payload && payload.taskId);
+          var id = payload && payload.taskId;
+          // 对账自己删的（重复任务、已归档、关掉提醒）：不需要再排一轮重建
+          if (id && isSelfDelete(id)) return;
+          scheduleRebuild(id);
         });
       } catch (e) { /* ignore */ }
     }
@@ -272,6 +320,19 @@
         var repairs = [];
         var stale = [];
         var removeIds = [];
+        var removeSeen = Object.create(null);
+        var mapDirty = false;
+
+        // 0. 清理映射表里「宿主已经没有」的任务 id。
+        //    用户直接在任务列表里删任务时宿主不会再通知我们，这些条目否则会永久堆积。
+        var alive = Object.create(null);
+        for (var a = 0; a < host.tasks.length; a++) {
+          var at = host.tasks[a];
+          if (at && at.id) alive[at.id] = true;
+        }
+        Object.keys(map).forEach(function (id) {
+          if (!alive[id]) { delete map[id]; mapDirty = true; }
+        });
 
         // 1. 认领已有任务：
         //    · 备注里有标记 → 本插件管理
@@ -293,20 +354,21 @@
           repairs.push({ id: t.id, notes: desired.notes });
         });
 
-        // 2. 计算期望集合
-        var wanted = 0;
+        // 2. 计算期望集合：每条事件只推导一次，plan 直接复用（原来 plan 内部又算了一遍）
+        var desiredAll = [];
         for (var i = 0; i < events.length; i++) {
-          if (ReminderTasks.desiredTask(events[i], today)) wanted++;
+          var want = ReminderTasks.desiredTask(events[i], today);
+          if (want) desiredAll.push(want);
         }
-        var sources = events;
-        if (wanted > MAX_TASKS) {
-          sources = events.slice(0, MAX_TASKS);
+        var sources = desiredAll;
+        if (desiredAll.length > MAX_TASKS) {
+          sources = desiredAll.slice(0, MAX_TASKS);
           try { api.log && api.log.warn('[里程碑] 提醒任务超过上限，仅同步前 ' + MAX_TASKS + ' 个'); } catch (e) { /* ignore */ }
         }
 
         // 3. 对账：期望集合之外的一律删除，所以「关掉某个日子的任务提醒」
         //    和「把它归档」都会让对应任务消失，不需要额外的清理代码
-        var plan = ReminderTasks.plan({ events: sources, existing: managed, today: today });
+        var plan = ReminderTasks.plan({ desired: sources, existing: managed, today: today });
 
         // 本轮已经处理过（完成并被归档）的，不再重新生成
         var done = pruneDone(readDone(), Date.now());
@@ -319,6 +381,12 @@
         // 4. 执行：先补备注、再删、再改、最后加，避免标题重复和引用悬空
         var seq = Promise.resolve();
 
+        function queueRemove(id) {
+          if (!id || removeSeen[id]) return;
+          removeSeen[id] = true;
+          removeIds.push(id);
+        }
+
         repairs.forEach(function (r) {
           seq = run(seq, function () {
             return Promise.resolve(api.updateTask(r.id, { notes: r.notes })).then(null, function () {});
@@ -326,16 +394,21 @@
         });
 
         stale.forEach(function (t) {
-          removeIds.push(t.id);
+          queueRemove(t.id);
         });
 
         plan.remove.forEach(function (r) {
-          removeIds.push(r.task.id);
+          queueRemove(r.task.id);
         });
 
         removeIds.forEach(function (id) {
           seq = run(seq, function () {
-            return Promise.resolve(api.deleteTask(id)).then(function () { delete map[id]; }, function () { delete map[id]; });
+            markSelfDelete(id);
+            var clear = function () { delete map[id]; mapDirty = true; };
+            return Promise.resolve(api.deleteTask(id)).then(clear, function () {
+              clear();
+              unmarkSelfDelete(id);
+            });
           });
         });
 
@@ -362,13 +435,13 @@
               dueDay: a.dueDay,
               projectId: projectId
             })).then(function (id) {
-              if (id) map[id] = a.eventId;
+              if (id) { map[id] = a.eventId; mapDirty = true; }
             }, function () { /* 单条失败不影响其它 */ });
           });
         });
 
         return seq.then(function () {
-          writeMap(map);
+          if (mapDirty) writeMap(map);
           return { added: plan.add.length, updated: plan.update.length, removed: removeIds.length };
         });
       });
@@ -472,6 +545,12 @@
     stopped = true;
     if (timer) { clearInterval(timer); timer = null; }
     if (rebuildTimer) { clearTimeout(rebuildTimer); rebuildTimer = null; }
+    // 卸载时把缓存也放掉，插件重新加载不会留着上一份数据
+    dataCache = null;
+    rawKey = '';
+    rawValue = null;
+    projectIdCache = null;
+    selfDeleted = Object.create(null);
   }
 
   /* ---------------- 启动 ---------------- */

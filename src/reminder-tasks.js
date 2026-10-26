@@ -128,29 +128,40 @@
 
   /**
    * 对账：期望集合 vs 现有任务
-   * @param {{events:Array, existing:Array, today:Date}} params
+   * @param {{events?:Array, desired?:Array, existing:Array, today:Date}} params
+   *        events  事件数组（内部按需推导期望任务）
+   *        desired 已经推导好的期望任务；给了就不再重复推导（调用方已算过时省一半开销）
    *        existing 为宿主里的任务对象（需含 id/title/notes/dueDay/isDone/created）
    * @returns {{add:Array, update:Array, remove:Array, wanted:number}}
    */
   function plan(params) {
     params = params || {};
     var today = params.today || new Date();
-    var events = params.events || [];
     var existing = params.existing || [];
 
     // 1. 期望集合
-    var desired = [];
-    for (var i = 0; i < events.length; i++) {
-      var d = desiredTask(events[i], today);
-      if (d) desired.push(d);
+    var desired;
+    if (Array.isArray(params.desired)) {
+      desired = params.desired;
+    } else {
+      var events = params.events || [];
+      desired = [];
+      for (var i = 0; i < events.length; i++) {
+        var d = desiredTask(events[i], today);
+        if (d) desired.push(d);
+      }
     }
 
     // 2. 现有任务按 eventId 归组（同一事件出现多条视为历史重复，只保留最早的一条）
-    var groups = {};
+    //    用无原型对象：事件 id 若恰好叫 __proto__，普通对象会串到原型链上
+    var groups = Object.create(null);
+    var marked = [];
     for (var j = 0; j < existing.length; j++) {
       var task = existing[j];
+      if (!task || !task.id) continue;
       var mark = parseMark(task.notes);
       if (!mark) continue;
+      marked.push({ task: task, mark: mark });
       if (!groups[mark.eventId]) groups[mark.eventId] = [];
       groups[mark.eventId].push({ task: task, mark: mark });
     }
@@ -158,7 +169,7 @@
     var add = [];
     var update = [];
     var remove = [];
-    var wanted = {};
+    var wanted = Object.create(null);
 
     // 3. 按期望逐条比对
     desired.forEach(function (d) {
@@ -197,12 +208,11 @@
     });
 
     // 4. 孤儿任务：数据里已经没有这个事件，或它已经不需要提醒
-    for (var m = 0; m < existing.length; m++) {
-      var t2 = existing[m];
-      var mk = parseMark(t2.notes);
-      if (!mk) continue;
+    //    marked 是第 2 步就解析好的列表，备注只解析一次
+    for (var m = 0; m < marked.length; m++) {
+      var mk = marked[m].mark;
       if (wanted[mk.eventId]) continue;
-      remove.push({ task: t2, eventId: mk.eventId, reason: 'orphan' });
+      remove.push({ task: marked[m].task, eventId: mk.eventId, reason: 'orphan' });
     }
 
     return { add: add, update: update, remove: remove, wanted: desired.length };
