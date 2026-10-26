@@ -1,0 +1,17 @@
+{
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "editor.tabSize": 2,
+  "editor.detectIndentation": false,
+  "search.exclude": {
+    "node_modules/**": true,
+    "dist/**": true,
+    "preview/**": true,
+    "releases/**": true
+  },
+  "files.readonlyInclude": {
+    "dist/**": true,
+    "preview/**": true
+  }
+}

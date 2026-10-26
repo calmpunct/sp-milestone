@@ -8,8 +8,11 @@ preview/
 # 安装包：随时可用 npm run build 重新生成
 releases/*.zip
 
-# 编辑器与系统
-.vscode/
+# 编辑器与系统（只保留共享配置）
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
 .idea/
 .DS_Store
 Thumbs.db
