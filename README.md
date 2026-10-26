@@ -27,7 +27,7 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，**�
 
 1. 打开 Super Productivity → `设置` → `插件`
 2. 点击 `Choose Plugin File`（选择插件文件）
-3. 选中 `releases/countdown-days-v2.5.2.zip`
+3. 选中 `releases/plugin-milestone-v2.6.0.zip`
 4. 安装后，左侧导航出现「里程碑」入口
 
 > 不需要解压 ZIP。网页版因浏览器跨域限制无法自动下载，请手动下载 ZIP 后用同样方式安装。
@@ -209,7 +209,7 @@ cd:ev=e1;cy=2027-05-14
 - `hero`：顶栏下方是否放大显示当前分区的第一条，默认 `true`
 - `strikeExpired`：倒数日过期后名称是否加删除线，默认 `true`
 
-> 插件 `id` 仍是 `countdown-days`——标识一旦安装就被宿主记录，改名只改显示名，免得升级后变成两个插件。
+> 插件的机器标识是 `plugin-milestone`（与 `package.json` 的 `name`、安装包文件名同一份），显示名是「里程碑」。详见下方[命名约定](#命名约定)。
 
 `remind` 缺省时按 `{ task: true, snack: false, offsets: [0, 1] }` 补齐，新日子也用这一份默认值。
 
@@ -275,8 +275,24 @@ src/
 ├── manifest.json   插件清单
 └── icon.svg        图标
 build.js            打包脚本（零依赖，内含 ZIP 写入器）
-test/               六组测试
+test/               七组测试
 ```
+
+### 命名约定
+
+一个项目只允许**一个机器标识**，其余名字都从它派生：
+
+| 用途 | 值 | 来源 |
+| --- | --- | --- |
+| 机器标识（`manifest.id`） | `plugin-milestone` | 唯一真源 |
+| 安装包文件名 | `plugin-milestone-v<版本>.zip` | `manifest.id` + `manifest.version` |
+| `package.json` 的 `name` | `plugin-milestone` | 必须与 `manifest.id` 相同 |
+| 显示名（左侧导航、标题、设置关于） | 里程碑 | `manifest.name` |
+| 提醒任务默认项目名 | 里程碑提醒 | `settings.taskProject` |
+
+`npm run build` 会先校验 `package.json` 的 `name` / `version` 与 `manifest.json` 一致，不一致直接失败——避免再出现「包名一个、清单一个、版本还各走各的」这种漂移。
+
+> 内部还有一层 `cd-` 前缀（CSS 类名、CSS 变量、`localStorage` 键、`data-cd-theme`）。它是 **c**ount**d**own 的缩写，属于界面命名空间，不是插件标识，与上面的身份无关；换掉要动 700 多处且无功能收益，因此保持不变。
 
 改动后务必跑 `npm test`——DOM 用例会真的执行表单交互和同步写入。
 
@@ -292,13 +308,13 @@ test/               六组测试
 {
   "name": "里程碑",
   "shortDescription": "倒数日、纪念日、生日与节日管理，内置农历节日预设，支持跨设备同步。",
-  "url": "https://github.com/<you>/super-productivity-milestone",
+  "url": "https://github.com/<you>/plugin-milestone",
   "author": "<you>",
-  "id": "countdown-days",
+  "id": "plugin-milestone",
   "release": {
-    "version": "2.5.2",
-    "downloadUrl": "https://github.com/<you>/super-productivity-milestone/releases/download/v2.5.2/countdown-days-v2.5.2.zip",
-    "sha256": "88b8df32a85e917280e3e71dd811ba76fbe7813b2068431e35bee3bc91c09bca"
+    "version": "2.6.0",
+    "downloadUrl": "https://github.com/<you>/plugin-milestone/releases/download/v2.6.0/plugin-milestone-v2.6.0.zip",
+    "sha256": "3dde714306ba3972ea62c988b640585fcd72e1401b076a82f0b14b85cd437e7e"
   }
 }
 ```

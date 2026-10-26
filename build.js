@@ -382,6 +382,33 @@ function makeZip(files, when) {
 
 /* ---------------- 主流程 ---------------- */
 
+/**
+ * 命名一致性闸门：一个项目只允许一个机器标识。
+ * zip 名、社区插件 id、package.json 名都从 manifest.id 派生，任何一处写错都会让
+ * 安装包名与身份对不上（历史问题：package.json 曾长期停在 2.3.0，manifest 已到 2.5.2）。
+ */
+function assertNaming(manifest) {
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  } catch (e) {
+    throw new Error('package.json 读取失败: ' + e.message);
+  }
+  if (pkg.name !== manifest.id) {
+    throw new Error(
+      '命名不一致：package.json name="' + pkg.name + '" 与 manifest.id="' + manifest.id + '" 不同，' +
+      '两者必须一致（zip 名由 manifest.id 决定）'
+    );
+  }
+  if (pkg.version !== manifest.version) {
+    throw new Error(
+      '版本不一致：package.json ' + pkg.version + ' ≠ manifest.json ' + manifest.version +
+      '，改版本时两处都要改'
+    );
+  }
+  if (!String(manifest.name || '').trim()) throw new Error('manifest.name（显示名）不能为空');
+}
+
 function main() {
   fs.rmSync(DIST, { recursive: true, force: true });
   fs.mkdirSync(DIST, { recursive: true });
@@ -401,6 +428,7 @@ function main() {
   if (!Array.isArray(manifest.hooks)) throw new Error('manifest.hooks 必须是数组');
   if (manifest.iFrame !== true) throw new Error('iFrame 必须为 true');
   if (!/^[a-z0-9-]+$/.test(manifest.id)) throw new Error('manifest.id 必须是 kebab-case');
+  assertNaming(manifest);
 
   const indexHtml = buildIndexHtml();
   const pluginJs = buildPluginJs();
@@ -466,4 +494,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { minifyJs, minifyCss, buildIndexHtml, buildPluginJs, read };
+module.exports = { minifyJs, minifyCss, buildIndexHtml, buildPluginJs, assertNaming, read };

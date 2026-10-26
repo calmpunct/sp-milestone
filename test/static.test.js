@@ -96,6 +96,19 @@ ok(Array.isArray(manifest.hooks), 'hooks 是数组');
 ok(manifest.icon && fs.existsSync(path.join(ROOT, 'src', manifest.icon)), '图标文件存在');
 ok(/^\d+\.\d+\.\d+$/.test(manifest.version), '版本号为数字格式');
 
+// 命名唯一真源：安装包名、package.json、README 都从 manifest.id + version 派生，
+// 任何一处手写都会漂移（历史问题：package.json 停在 2.3.0，README 里写死 countdown-days-*.zip）
+const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+const readme = read('README.md');
+const zipName = manifest.id + '-v' + manifest.version + '.zip';
+ok(/^[a-z0-9-]+$/.test(manifest.id), 'manifest.id 为 kebab-case', manifest.id);
+ok(pkg.name === manifest.id, 'package.json name 与 manifest.id 一致', pkg.name + ' vs ' + manifest.id);
+ok(pkg.version === manifest.version, 'package.json 版本与清单一致', pkg.version + ' vs ' + manifest.version);
+ok(readme.includes(zipName), 'README 提到的安装包名与构建派生一致', zipName);
+ok(!/countdown-days/.test(readme), 'README 里不再残留旧标识 countdown-days');
+ok(!/super-productivity-milestone/.test(readme), 'README 里不再残留旧仓库名');
+ok(dist.includes('<title>' + manifest.name + '</title>'), '页面标题与清单显示名一致', manifest.name);
+
 // 代码里注册的钩子必须在清单中声明，否则宿主不会投递（曾漏掉 taskComplete/taskDelete）
 const mainJs = read('src/plugin-main.js');
 const codes = new Set();

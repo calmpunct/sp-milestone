@@ -1,6 +1,6 @@
 {
-  "name": "super-productivity-milestone",
-  "version": "2.3.0",
+  "name": "plugin-milestone",
+  "version": "2.6.0",
   "private": true,
   "description": "里程碑 — Super Productivity 插件：倒数日 / 纪念日 / 农历生日，支持跨设备同步",
   "scripts": {

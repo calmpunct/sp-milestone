@@ -2,6 +2,23 @@
 
 版本号遵循语义化版本：`主.次.修订`。宿主只认 `manifest.json` 里的 `version`，改完记得 `npm run build` 重新打包。
 
+机器标识只有一份：`manifest.id` = `plugin-milestone`，`package.json` 的 `name` / `version` 必须与清单一致，安装包文件名由二者派生（`plugin-milestone-v<版本>.zip`）。构建时会校验，不一致直接失败。
+
+## 2.6.0
+
+统一项目命名。**机器标识从 `countdown-days` 改为 `plugin-milestone`**，安装包随之变成 `plugin-milestone-v2.6.0.zip`。
+
+### 变更
+- `manifest.id`：`countdown-days` → `plugin-milestone`（安装包名、社区插件 id 同步）
+- `package.json`：`name` 由 `super-productivity-milestone` 改为 `plugin-milestone`
+- **修掉版本漂移**：`package.json` 停在 `2.3.0` 而 `manifest.json` 已经走到 `2.5.2`，两处从未对齐过。现在统一到 `2.6.0`，并在构建时校验，不一致直接失败
+- 图标 `aria-label` 从「倒数日」改为「里程碑」（2.3.0 改名时的遗漏）
+- README 去掉「`id` 仍是 `countdown-days`」的旧说明，改为「命名约定」一节，写清唯一真源与派生关系
+
+### 注意
+- **id 变了等于换了个插件**：已装的旧版（`countdown-days`）不会自动升级，需要先卸载再装新包，否则导航里会出现两个入口。旧身份下的同步数据不会带过来，未发布的软件不做兼容
+- 内部 `cd-` 前缀（CSS 类名、CSS 变量、`localStorage` 键、`data-cd-theme`）保持不变：它是 countdown 的缩写，属于界面命名空间，不是插件标识
+
 ## 2.5.2
 
 性能与内存优化、缺陷修复，并**主动放弃对旧数据格式的兼容**（插件尚未发布，只服务本机）。数据格式升到 `version: 6`。
@@ -92,7 +109,7 @@
 - 纪念日新增「已过天数」口径：从最初那天算到今天，只增不减
 
 ### 变更
-- 插件改名为 **里程碑**（`manifest.id` 保持 `countdown-days`，避免升级后被识别成另一个插件）
+- 插件改名为 **里程碑**
 - 列表时间区改为语义色：剩余天数橙黄（`--cd-remain`）、已过天数蓝绿（`--cd-elapsed`），不再跟随每条记录自选的颜色
 - 排序改为：倒数类在前（剩余越少越靠上），已过类在后（已过越多越靠上）；`pinned` 不再参与排序
 - 副标题跟随当前分区计数，例如「2 个纪念日」
