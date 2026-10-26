@@ -228,11 +228,11 @@ const many = Core.dueReminders([
 ], TODAY);
 eq(many.map((x) => x.offset).join(','), '1,7', '按临近程度排序');
 
-// 18. 提醒配置的容错与旧数据迁移
-console.log('[9] 提醒配置容错与旧数据迁移');
+// 18. 提醒配置的容错（不兼容 2.0 数据：未发布的软件，只保留当前格式）
+console.log('[9] 提醒配置容错');
 const nd = Core.normalize({ events: [{ title: 'x', date: '2026-01-01' }] }).events[0];
-eq(nd.remind.task, true, '旧数据默认加入任务列表');
-eq(nd.remind.snack, false, '旧数据默认不弹提示条');
+eq(nd.remind.task, true, '缺省加入任务列表');
+eq(nd.remind.snack, false, '缺省不弹提示条');
 eq(nd.remind.offsets.join(','), '0,1', '默认当天 + 提前 1 天');
 eq(nd.archived, false, '默认不归档');
 
@@ -242,37 +242,31 @@ eq(nbad.remind.offsets.join(','), '0', '非法档位回落当天');
 const noff = Core.normalize({ events: [{ title: 'z', date: '2026-01-01', remind: { task: false, snack: false, offsets: [7] } }] }).events[0];
 eq(noff.remind.task, false, '关闭任务列表被保留');
 eq(noff.remind.offsets.join(','), '7', '关闭时保留档位');
-eq(noff.remind.on, false, '兼容字段 on 同步为 false');
+eq('on' in noff.remind, false, '不再写兼容字段 on');
 
-// 2.0 旧数据：on + 全局 taskSync/snackOnOpen → 折算成每个日子的渠道
-const legacy1 = Core.normalize({
-  settings: { taskSync: true, snackOnOpen: false },
+// 旧字段一律忽略：on / taskSync / snackOnOpen 不再被识别，也不会污染数据
+const oldShape = Core.normalize({
+  settings: { taskSync: true, snackOnOpen: true, leapPolicy: 'strict' },
   events: [{ title: 'a', date: '2026-01-01', remind: { on: true, offsets: [0, 3] } }]
 });
-eq(legacy1.events[0].remind.task, true, '旧 on:true + taskSync → 任务列表');
-eq(legacy1.events[0].remind.snack, false, '旧 snackOnOpen:false → 不弹提示条');
-eq('taskSync' in legacy1.settings, false, '全局开关不再出现在数据里');
-eq('defaultTask' in legacy1.settings, false, '不再保留新建默认值字段');
-
-const legacy2 = Core.normalize({
-  settings: { taskSync: false, snackOnOpen: true },
-  events: [{ title: 'b', date: '2026-01-01', remind: { on: true, offsets: [1] } }]
-});
-eq(legacy2.events[0].remind.task, false, '旧 taskSync:false → 不建任务');
-eq(legacy2.events[0].remind.snack, true, '旧 snackOnOpen:true → 弹提示条');
-eq(Object.keys(legacy2.settings).sort().join(','), 'hero,leapPolicy,strikeExpired,taskProject', 'settings 只剩历法策略、项目名与两个显示开关');
-eq(legacy2.settings.hero, true, '旧数据默认开启置顶卡片');
-eq(legacy2.settings.strikeExpired, true, '旧数据默认给过期倒数日加删除线');
+eq(oldShape.events[0].remind.task, true, '旧 on 被忽略，按缺省加入任务列表');
+eq(oldShape.events[0].remind.snack, false, '旧 on 不会打开提示条');
+eq(oldShape.events[0].remind.offsets.join(','), '0,3', '合法档位仍被保留');
+eq(Object.keys(oldShape.settings).sort().join(','), 'hero,strikeExpired,taskProject', 'settings 只有项目名与两个显示开关');
+eq(oldShape.settings.hero, true, '缺省开启置顶卡片');
+eq(oldShape.settings.strikeExpired, true, '缺省给过期倒数日加删除线');
 eq(Core.normalize({ settings: { strikeExpired: false } }).settings.strikeExpired, false, '删除线开关可关闭');
 eq(Core.normalize({ settings: { hero: false } }).settings.hero, false, '关闭置顶被保留');
 eq(Core.normalize({}).settings.hero, true, '没有 settings 时默认开启');
+eq(Core.emptyData().version, 6, '数据版本 6（不兼容旧版本）');
 
-const legacyOff = Core.normalize({
-  settings: { taskSync: true, snackOnOpen: false },
-  events: [{ title: 'c', date: '2026-01-01', remind: { on: false, offsets: [0] } }]
-}).events[0];
-eq(legacyOff.remind.task, false, '旧 on:false 不建任务');
-eq(legacyOff.remind.snack, false, '旧 on:false 不弹提示条');
+// 旧字段不落库：pinned 已从数据模型移除
+eq('pinned' in Core.normalize({ events: [{ title: 'p', date: '2026-01-01', pinned: true }] }).events[0], false, 'pinned 字段已移除');
+
+// repeat 只认布尔：不再识别历史上的 'yearly'
+eq(Core.normalize({ events: [{ title: 'r1', kind: 'countdown', date: '2026-01-01', repeat: 'yearly' }] }).events[0].repeat, false, 'countdown 的 yearly 不再当作 true');
+eq(Core.normalize({ events: [{ title: 'r2', kind: 'countdown', date: '2026-01-01', repeat: true }] }).events[0].repeat, true, 'countdown 布尔 true 保留');
+eq(Core.normalize({ events: [{ title: 'r3', kind: 'birthday', date: '2026-01-01', repeat: false }] }).events[0].repeat, true, '非倒数日强制每年重复');
 
 // 归档字段
 const arch = Core.normalize({ events: [{ title: 'd', date: '2026-01-01', archived: true }] }).events[0];

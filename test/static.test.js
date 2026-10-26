@@ -127,10 +127,20 @@ ok(/viewport/.test(dist), '移动端 viewport');
 ok(!/\t/.test(css), 'CSS 未混用制表符');
 
 // 体积
-const total = ['manifest.json', 'plugin.js', 'index.html', 'icon.svg']
-  .reduce((s, f) => s + fs.statSync(path.join(ROOT, 'dist', f)).size, 0);
+const sizes = {};
+['manifest.json', 'plugin.js', 'index.html', 'icon.svg'].forEach((f) => {
+  sizes[f] = fs.statSync(path.join(ROOT, 'dist', f)).size;
+});
+const total = Object.keys(sizes).reduce((s, f) => s + sizes[f], 0);
 ok(total < 1024 * 1024, '产物体积 < 1MB', (total / 1024).toFixed(0) + ' KB');
-console.log(`     产物合计 ${(total / 1024).toFixed(1)} KB`);
+// 宿主对单个文件有 100KB 上限，超了装不上
+ok(sizes['index.html'] <= 100 * 1024, 'index.html 不超过 100KB',
+  (sizes['index.html'] / 1024).toFixed(1) + ' KB');
+ok(sizes['plugin.js'] <= 100 * 1024, 'plugin.js 不超过 100KB',
+  (sizes['plugin.js'] / 1024).toFixed(1) + ' KB');
+ok(!/\n {2,}\S/.test(dist.match(/<script>([\s\S]*)<\/script>/)[1]),
+  '内联脚本已压缩（无行首缩进）');
+console.log(`     产物合计 ${(total / 1024).toFixed(1)} KB（index ${(sizes['index.html'] / 1024).toFixed(1)} KB / plugin ${(sizes['plugin.js'] / 1024).toFixed(1)} KB）`);
 
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

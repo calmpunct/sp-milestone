@@ -63,6 +63,7 @@ const dom = new JSDOM(html, {
     window.__SAVES__ = [];
     window.__hooks = {};
     window.__answer = '取消';
+    window.__answers = [];
     window.PluginAPI = {
       Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
       onReady(fn) { setTimeout(fn, 0); },
@@ -71,7 +72,11 @@ const dom = new JSDOM(html, {
       loadSyncedData() { return Promise.resolve(window.__STORE__); },
       persistDataSynced(s) { window.__STORE__ = s; window.__SAVES__.push(s); return Promise.resolve(); },
       showSnack() {},
-      openDialog() { return Promise.resolve(window.__answer); }
+      openDialog() {
+        // __answers 优先：需要连续多次确认的流程按顺序取值；否则回落到 __answer
+        const q = window.__answers;
+        return Promise.resolve(q && q.length ? q.shift() : window.__answer);
+      }
     };
   }
 });
@@ -637,7 +642,61 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   $('#cdSetClose').click();
   await wait(420);
 
-  console.log('[20] 无运行时错误');
+  console.log('[20] 清除数据缓存（二次确认）');
+  {
+    const before = JSON.parse(window.__STORE__).events.length;
+    ok(before > 0, '清除前有 ' + before + ' 条');
+    window.localStorage.setItem('cd-task-map-v1', '{"task_1":"b1"}');
+    window.localStorage.setItem('cd-remind-seen', '{"k":1}');
+    window.localStorage.setItem('cd-handled-v1', '{"k":1}');
+
+    $('#cdSettings').click();
+    await wait(150);
+    eq($('#sClear').textContent.trim(), '清除里程碑数据缓存', '设置里有清除按钮');
+    ok(/当前共 \d+ 个日子/.test($('#sDataInfo').textContent), '数据概况显示条数：' + $('#sDataInfo').textContent);
+
+    // 第一次确认点「取消」→ 什么都不该发生
+    window.__answers = ['取消'];
+    $('#sClear').click();
+    await wait(200);
+    eq(JSON.parse(window.__STORE__).events.length, before, '第一次确认取消后数据不变');
+    eq(document.querySelectorAll('.cd-item').length, before, '列表不变');
+
+    // 第一次「继续」、第二次「取消」→ 仍然不删
+    window.__answers = ['继续', '取消'];
+    $('#sClear').click();
+    await wait(200);
+    eq(JSON.parse(window.__STORE__).events.length, before, '第二次确认取消后数据不变');
+
+    // 两次都确认 → 清空
+    const saves = window.__SAVES__.length;
+    window.__answers = ['继续', '确定清除'];
+    $('#sClear').click();
+    await wait(350);
+    const after = JSON.parse(window.__STORE__);
+    eq(after.events.length, 0, '数据已清空');
+    eq(after.version, 6, '写入的是当前数据格式');
+    ok(window.__SAVES__.length > saves, '立即触发了一次写入');
+    eq(document.querySelectorAll('.cd-item').length, 0, '列表清空');
+    eq($('#cdSetLayer').hidden, true, '清除后关闭设置面板');
+    eq(window.localStorage.getItem('cd-task-map-v1'), null, '本机任务映射表已清');
+    eq(window.localStorage.getItem('cd-remind-seen'), null, '本机已提示记录已清');
+    eq(window.localStorage.getItem('cd-handled-v1'), null, '本机已处理记录已清');
+
+    // 清空后还能继续用
+    $('#cdAdd').click();
+    await wait(150);
+    $('#fTitle').value = '清空后新建';
+    $('#fDate').value = '2027-07-07';
+    $('#fDate').dispatchEvent(new window.Event('change'));
+    await wait(40);
+    $('#cdSave').click();
+    await wait(450);
+    eq(JSON.parse(window.__STORE__).events.length, 1, '清空后可以继续新建');
+    eq(document.querySelectorAll('.cd-item').length, 1, '新条目正常显示');
+  }
+
+  console.log('[21] 无运行时错误');
   eq(errors.length, 0, '控制台无报错' + (errors.length ? '：\n     ' + errors.join('\n     ') : ''));
 
   console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);

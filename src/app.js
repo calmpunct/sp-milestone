@@ -12,7 +12,9 @@
     filter: 'all',
     editingId: null,
     draft: null,
-    lastWritten: ''
+    lastWritten: '',
+    // 清除数据后的一小段时间内忽略同步回写，避免刚清空的数据被旧值拉回来
+    clearAt: 0
   };
 
   /* ================= 插件 API 桥 ================= */
@@ -395,10 +397,9 @@
     var age = ageText(r);
     if (age) sub += ' · ' + age;
 
+    // 铃铛图标走 <symbol> + <use>，每条记录只输出一个 use，HTML 体积小一半以上
     var bell = Core.hasReminder(ev)
-      ? '<svg class="cd-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
-        ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>'
+      ? '<svg class="cd-bell" aria-hidden="true"><use href="#cd-bell-ico"/></svg>'
       : '';
 
     var tag;
@@ -412,7 +413,7 @@
     }
 
     return '<div class="cd-item' + (isToday ? ' is-today' : '') + '" data-id="' + esc(ev.id) + '"' +
-        ' style="--cd-rc:' + rgb + ';--cd-rc-color:rgb(' + rgb + ')" role="button" tabindex="0">' +
+        ' style="--cd-rc:' + rgb + '" role="button" tabindex="0">' +
         '<div class="cd-item-main">' +
           '<div class="cd-item-title"><em' + (done ? ' class="cd-item-name--done"' : '') + '>' +
             '<span>' + esc(r.name) + '</span>' +
@@ -552,7 +553,6 @@
       repeat: true,
       color: Core.COLORS[0],
       note: '',
-      pinned: false,
       // 新日子默认加入任务列表，渠道可在此页单独改
       remind: Core.defaultRemind(),
       // 在归档视图里新建，默认就是归档状态，符合「我要放一个不重要的日子」
@@ -917,14 +917,66 @@
 
   var setTimer = null;
 
+  // 本机缓存键，与 plugin-main.js 里的 SEEN_KEY / MAP_KEY / DONE_KEY 保持一致
+  var HOST_KEYS = ['cd-task-map-v1', 'cd-remind-seen', 'cd-handled-v1'];
+
   function refreshSettingsForm() {
     var st = state.data.settings || Core.emptySettings();
     $('#sHero').checked = st.hero !== false;
     $('#sStrike').checked = st.strikeExpired !== false;
+
+    var events = state.data.events || [];
+    var archived = 0;
+    for (var i = 0; i < events.length; i++) if (events[i].archived) archived++;
+    $('#sDataInfo').textContent = events.length
+      ? '当前共 ' + events.length + ' 个日子' + (archived ? '（其中 ' + archived + ' 个已归档）' : '')
+      : '当前还没有记录';
+
     var meta = document.querySelector('meta[name="cd-version"]');
     var ver = meta ? (meta.getAttribute('content') || '') : '';
     $('#sAbout').textContent = '里程碑' + (ver ? ' v' + ver : '') +
       ' · 提醒任务写入项目「' + st.taskProject + '」· 数据随应用同步';
+  }
+
+  /** 清空同步数据与本机缓存。调用前必须已经过二次确认 */
+  function clearAllData() {
+    state.data = Core.emptyData();
+    state.editingId = null;
+    state.draft = null;
+    state.filter = 'all';
+    state.lastWritten = '';
+    state.clearAt = Date.now();
+
+    for (var i = 0; i < HOST_KEYS.length; i++) {
+      try { window.localStorage.removeItem(HOST_KEYS[i]); } catch (e) { /* 存储不可用 */ }
+    }
+    try { window.localStorage.removeItem(DEV_KEY); } catch (e) { /* 存储不可用 */ }
+
+    // 立刻落盘，不走防抖：这 200ms 里若有同步回写，旧数据会被又拉回来
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    saveNow(JSON.stringify(state.data));
+
+    closeSettings();
+    renderAll();
+    toast('已清除所有数据');
+  }
+
+  /** 两段确认：先讲清影响面，再确认不可恢复 */
+  function askClearData() {
+    var n = (state.data.events || []).length;
+    var head = n
+      ? '将清除全部 ' + n + ' 个日子、设置与本机提醒缓存，并移除插件在任务列表里生成的提醒任务。'
+      : '将清除当前设置与本机提醒缓存，并移除插件在任务列表里生成的提醒任务。';
+    return confirmDialog(head + ' 此操作不可撤销。', '继续', '清除数据').then(function (go) {
+      if (!go) return;
+      return confirmDialog(
+        '最后确认：清除后无法恢复，所有日子里的事都会消失。确定要清空吗？',
+        '确定清除',
+        '再次确认'
+      ).then(function (ok) {
+        if (ok) clearAllData();
+      });
+    });
   }
 
   function openSettings() {
@@ -1004,8 +1056,6 @@
     return {
       task: taskOn,
       snack: snackOn,
-      // 兼容字段：仍在使用 2.0 的客户端读到 on 才知道「有提醒」
-      on: taskOn || snackOn,
       offsets: offs.length ? offs : [0]
     };
   }
@@ -1076,11 +1126,9 @@
         repeat: true,
         color: f.color,
         note: note,
-        pinned: false,
         remind: {
           task: remind.task,
           snack: remind.snack,
-          on: remind.on,
           offsets: remind.offsets.slice()
         },
         archived: archived,
@@ -1140,11 +1188,12 @@
     toast(replaced ? '已更新' : '已添加');
   }
 
-  function confirmDialog(title, okLabel) {
+  function confirmDialog(title, okLabel, dialogTitle) {
     var label = okLabel || '删除';
     if (window.PluginAPI && typeof window.PluginAPI.openDialog === 'function') {
       return apiCall('openDialog', {
-        title: '删除确认',
+        title: dialogTitle || '删除确认',
+        // 纯文本 + <p>：不拼接调用方传来的 HTML，避免把数据当标签解析
         htmlContent: '<p>' + esc(title) + '</p>',
         buttons: [{ label: '取消' }, { label: label, color: 'warn', raised: true }]
       }).then(function (r) { return r === label; }, function () { return false; });
@@ -1172,6 +1221,15 @@
 
   var saveTimer = null;
 
+  /** 立即写盘；正常保存走 persist 的防抖，清除数据不走防抖 */
+  function saveNow(json) {
+    state.lastWritten = json;
+    return Store.save(json).then(function (ok) {
+      if (!ok) { state.lastWritten = ''; toast('保存失败，请稍后重试'); }
+      return ok;
+    });
+  }
+
   function persist() {
     var json = JSON.stringify(state.data);
     if (json === state.lastWritten) return;
@@ -1179,9 +1237,7 @@
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       saveTimer = null;
-      Store.save(json).then(function (ok) {
-        if (!ok) { state.lastWritten = ''; toast('保存失败，请稍后重试'); }
-      });
+      saveNow(json);
     }, 200);
   }
 
@@ -1218,6 +1274,8 @@
     if (!key) return;
     try {
       P.registerHook(key, function () {
+        // 刚清空数据：此刻到达的回写大概率是清除前的旧值
+        if (state.clearAt && Date.now() - state.clearAt < 1500) return;
         Store.load().then(function (raw) {
           if (!raw || raw === state.lastWritten) return;
           var parsed = parseStored(raw);
@@ -1335,6 +1393,9 @@
     });
     $('#sStrike').addEventListener('change', function () {
       updateSetting('strikeExpired', this.checked);
+    });
+    $('#sClear').addEventListener('click', function () {
+      askClearData();
     });
 
     $('#cdSave').addEventListener('click', saveSheet);

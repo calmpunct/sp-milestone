@@ -149,7 +149,6 @@
 
   function emptySettings() {
     return {
-      leapPolicy: 'regular',
       // 任务归属的项目名
       taskProject: '里程碑提醒',
       // 顶部是否放大显示当前分区的第一条
@@ -160,7 +159,7 @@
   }
 
   function emptyData() {
-    return { version: 5, events: [], settings: emptySettings() };
+    return { version: 6, events: [], settings: emptySettings() };
   }
 
   /** 规范化外部数据，容错处理历史/损坏数据 */
@@ -168,24 +167,19 @@
     var data = emptyData();
     if (!raw || typeof raw !== 'object') return data;
 
-    // 2.0 及更早版本用全局开关控制渠道（settings.taskSync / snackOnOpen）。
-    // 这两个值现在只用于迁移旧事件：旧事件没有渠道信息时按当时的全局设置还原。
-    var legacy = { task: true, snack: false };
-
     if (raw.settings && typeof raw.settings === 'object') {
       var s = raw.settings;
-      data.settings.leapPolicy = s.leapPolicy === 'strict' ? 'strict' : 'regular';
       if (typeof s.taskProject === 'string' && s.taskProject.trim()) {
         data.settings.taskProject = s.taskProject.trim().slice(0, 40);
       }
       data.settings.hero = s.hero !== false;
       data.settings.strikeExpired = s.strikeExpired !== false;
-      if (typeof s.taskSync === 'boolean') legacy.task = s.taskSync;
-      if (typeof s.snackOnOpen === 'boolean') legacy.snack = s.snackOnOpen;
     }
 
     var list = Array.isArray(raw.events) ? raw.events : [];
     var usedIds = {};
+    var now = Date.now();
+    var thisYear = new Date().getFullYear();
     data.events = list.map(function (e, i) {
       if (!e || typeof e !== 'object') return null;
 
@@ -201,7 +195,7 @@
       if (!term && e.lunar && typeof e.lunar === 'object') {
         var lm = Math.round(+e.lunar.month), ld = Math.round(+e.lunar.day), ly = Math.round(+e.lunar.year);
         if (lm >= 1 && lm <= 12 && ld >= 1 && ld <= 30) {
-          lunar = { year: ly || new Date().getFullYear(), month: lm, day: ld, isLeap: !!e.lunar.isLeap };
+          lunar = { year: ly || thisYear, month: lm, day: ld, isLeap: !!e.lunar.isLeap };
         }
       }
       var calendar = term ? 'solar' : (e.calendar === 'lunar' ? 'lunar' : 'solar');
@@ -235,50 +229,40 @@
         lunar: lunar,
         term: term,
         preset: preset,
-        repeat: e.repeat === 'yearly' || kind !== 'countdown',
+        // 生日/纪念日/节日每年重来，只有倒数日可以选择是否滚动到明年
+        repeat: kind !== 'countdown' ? true : e.repeat === true,
         color: typeof e.color === 'string' && HEX_COLOR_RE.test(e.color) ? e.color : COLORS[0],
         note: typeof e.note === 'string' ? e.note.slice(0, 300) : '',
-        pinned: !!e.pinned,
-        remind: normalizeRemind(e.remind, legacy),
+        remind: normalizeRemind(e.remind),
         // 归档：只在归档视图里出现，不参与提醒
         archived: !!e.archived,
-        createdAt: +e.createdAt || Date.now()
+        createdAt: +e.createdAt || now
       };
     }).filter(Boolean);
     return data;
   }
 
   /**
-   * 归一化提醒配置
-   * 优先级：新字段 task/snack >（迁移）旧的 on + 当时的全局开关 > 默认值
+   * 归一化提醒配置：只认 { task, snack, offsets }
+   * 缺省为「加入任务列表 + 当天 / 提前 1 天」；非法档位直接丢弃
    */
-  function normalizeRemind(r, legacy) {
-    var base = legacy || { task: true, snack: false };
+  function normalizeRemind(r) {
     if (!r || typeof r !== 'object') {
-      return { task: base.task !== false, snack: base.snack === true, offsets: [0, 1] };
+      return { task: true, snack: false, offsets: [0, 1] };
     }
 
-    var offs = Array.isArray(r.offsets) ? r.offsets.filter(function (x) {
-      return REMIND_OFFSETS.indexOf(+x) !== -1;
-    }).map(Number) : [];
-    offs.sort(function (a, b) { return a - b; });
-
-    var task, snack;
-    if (typeof r.task === 'boolean' || typeof r.snack === 'boolean') {
-      task = r.task === true;
-      snack = r.snack === true;
-    } else {
-      // 旧版：remind.on 表示「要不要提醒」，渠道由全局开关决定
-      var on = r.on === true || r.on === 'yearly';
-      task = on && base.task !== false;
-      snack = on && base.snack === true;
+    var offs = [];
+    if (Array.isArray(r.offsets)) {
+      for (var i = 0; i < r.offsets.length; i++) {
+        var n = +r.offsets[i];
+        if (REMIND_OFFSETS.indexOf(n) !== -1 && offs.indexOf(n) === -1) offs.push(n);
+      }
+      offs.sort(function (a, b) { return a - b; });
     }
 
     return {
-      task: task,
-      snack: snack,
-      // 兼容字段：旧版本插件读到 on 也能正确判断「有没有提醒」
-      on: task || snack,
+      task: r.task !== false,
+      snack: r.snack === true,
       offsets: offs.length ? offs : [0]
     };
   }
