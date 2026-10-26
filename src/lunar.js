@@ -55,6 +55,22 @@
   var GAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
   var ZHI = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
 
+  // 英文侧只翻译展示用名称，换算逻辑与中文完全共用
+  var ZODIAC_EN = ['Rat', 'Ox', 'Tiger', 'Rabbit', 'Dragon', 'Snake',
+    'Horse', 'Goat', 'Monkey', 'Rooster', 'Dog', 'Pig'];
+  var GAN_EN = ['Jia', 'Yi', 'Bing', 'Ding', 'Wu', 'Ji', 'Geng', 'Xin', 'Ren', 'Gui'];
+  var ZHI_EN = ['zi', 'chou', 'yin', 'mao', 'chen', 'si', 'wu', 'wei', 'shen', 'you', 'xu', 'hai'];
+
+  var lang = 'zh';
+
+  function setLang(l) {
+    lang = l === 'en' ? 'en' : 'zh';
+  }
+
+  function isEn() {
+    return lang === 'en';
+  }
+
   function inRange(y) {
     return y >= MIN_YEAR && y <= MAX_YEAR;
   }
@@ -212,33 +228,38 @@
 
   /** 农历月名，如「正月」「闰六月」「冬月」 */
   function monthName(month, isLeap) {
+    if (isEn()) return (isLeap ? 'Leap ' : '') + 'month ' + month;
     var base = MONTH_NAMES[(month - 1) % 12] + '月';
     return (isLeap ? '闰' : '') + base;
   }
 
-  /** 农历日名，如「初十」「廿三」「三十」 */
+  /** 农历日名，如「初十」「廿三」「三十」；英文直接给数字 */
   function dayName(day) {
+    if (isEn()) return String(day);
     return DAY_NAMES[(day - 1) % 30] || '';
   }
 
-  /** 农历完整表示，如「农历六月初十」 */
+  /** 农历完整表示，如「农历六月初十」/ "Lunar month 6, day 10" */
   function lunarText(month, day, isLeap) {
+    if (isEn()) return 'Lunar ' + (isLeap ? 'leap ' : '') + 'month ' + month + ', day ' + day;
     return '农历' + monthName(month, isLeap) + dayName(day);
   }
 
   function zodiacOf(lunarYear) {
-    return ZODIAC[((lunarYear - 4) % 12 + 12) % 12];
+    var i = ((lunarYear - 4) % 12 + 12) % 12;
+    return isEn() ? ZODIAC_EN[i] : ZODIAC[i];
   }
 
   function ganzhiOf(lunarYear) {
     var g = ((lunarYear - 4) % 10 + 10) % 10;
     var z = ((lunarYear - 4) % 12 + 12) % 12;
-    return GAN[g] + ZHI[z];
+    return isEn() ? GAN_EN[g] + ZHI_EN[z] : GAN[g] + ZHI[z];
   }
 
   return {
     MIN_YEAR: MIN_YEAR,
     MAX_YEAR: MAX_YEAR,
+    setLang: setLang,
     leapMonth: leapMonth,
     leapDays: leapDays,
     monthDays: monthDays,

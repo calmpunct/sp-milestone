@@ -3,9 +3,23 @@
 
   var L = window.Lunar;
   var Core = window.EventCore;
+  var I = window.I18N;
   var DEV_KEY = 'cd-preview-v1';
 
   function $(s) { return document.querySelector(s); }
+
+  /** 当前语言下的文案 */
+  function t(key, vars) { return I.t(key, vars); }
+
+  /** 类型名的复数形式（用于「6 个生日」这类计数） */
+  function pluralOf(kind) {
+    return t('plural.' + (Core.KINDS[kind] ? kind : 'generic'));
+  }
+
+  /** 类型名的小写形式（用于「新建生日」「添加一个生日」这类句子） */
+  function kindLower(kind) {
+    return t('kindl.' + (Core.KINDS[kind] ? kind : 'generic'));
+  }
 
   var state = {
     data: Core.emptyData(),
@@ -52,6 +66,88 @@
       catch (e) { return Promise.resolve(false); }
     }
   };
+
+  /* ================= 语言 ================= */
+
+  /** 本机系统语言（宿主没有给出语言时兜底） */
+  function navLang() {
+    try {
+      return (window.navigator && window.navigator.language) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /**
+   * 宿主应用的语言，即「软件里设定的语言」。
+   * PluginAPI.cfg.lang 由宿主注入；老版本没有 cfg 时退回系统语言。
+   */
+  function hostLang() {
+    try {
+      var P = window.PluginAPI;
+      if (P && P.cfg && P.cfg.lang) return P.cfg.lang;
+    } catch (e) { /* ignore */ }
+    return navLang();
+  }
+
+  /** 当前语言偏好（数据里可能没有这一项） */
+  function langPref() {
+    return (state.data.settings && state.data.settings.lang) || 'auto';
+  }
+
+  /** 设置面板里的语言选择：语言包加进来就自动多一个按钮 */
+  function buildLangSeg() {
+    var box = $('#sLang');
+    if (!box) return;
+    var list = I.codes();
+    var html = '<button type="button" data-v="auto">' + esc(t('lang.auto')) + '</button>';
+    for (var i = 0; i < list.length; i++) {
+      html += '<button type="button" data-v="' + esc(list[i]) + '">' + esc(I.nameOf(list[i])) + '</button>';
+    }
+    box.innerHTML = html;
+    setSeg('#sLang', langPref());
+  }
+
+  /**
+   * 应用语言并刷新所有按语言生成的界面：
+   * 静态文案（data-i18n）、农历下拉、节日预设、颜色按钮、语言列表、设置项提示。
+   * @param {string} pref auto / 具体语言代码
+   */
+  function applyLang(pref) {
+    var l = I.resolve(pref, hostLang());
+    I.setLang(l);
+    Core.setLang(l);
+    document.documentElement.setAttribute('lang', l);
+    document.title = t('appName');
+    I.apply(document);
+    buildLangSeg();
+
+    buildYearSelect();
+    buildMonthSelect();
+    buildPresets();
+    var layer = $('#cdLayer');
+    if (!layer || layer.hidden) buildColors((state.draft && state.draft.color) || Core.COLORS[0]);
+    // 表单开着时被切语言：标题是按语言拼的，补回来
+    if (layer && !layer.hidden && state.draft) {
+      var k = segValue('#fKind') || state.draft.kind;
+      $('#cdSheetTitle').textContent = state.editingId
+        ? t('sheet.edit')
+        : t('sheet.new', { k: kindLower(k) });
+    }
+    var hint = $('#sLangHint');
+    if (hint) hint.textContent = t('lang.hint');
+  }
+
+  /** 用户切换语言：写进同步数据，让任务投影用同一种语言 */
+  function setLangPref(pref) {
+    if (!state.data.settings) state.data.settings = Core.emptySettings();
+    state.data.settings.lang = I.dictOf(pref) ? pref : 'auto';
+    applyLang(state.data.settings.lang);
+    renderAll();
+    refreshSettingsForm();
+    persist();
+    toast(t('toast.saved'));
+  }
 
   /* ================= 工具 ================= */
 
@@ -241,7 +337,7 @@
   function ageText(r) {
     if (!r.years) return '';
     // 生日的年龄已并入名称，这里只处理纪念日
-    if (r.ev.kind === 'anniversary') return r.years + ' 周年';
+    if (r.ev.kind === 'anniversary') return t('years.n', { n: r.years });
     return '';
   }
 
@@ -254,34 +350,33 @@
     var el = $('#cdSub');
     if (isArchiveView()) {
       el.textContent = archivedCount
-        ? archivedCount + ' 个已归档 · 不参与提醒'
-        : '归档里还没有日子';
+        ? t('sub.archived', { n: archivedCount })
+        : t('sub.archivedEmpty');
       return;
     }
     if (!rows.length) {
-      el.textContent = state.filter === 'all'
-        ? '还没有记录，添加一个重要的日子吧'
-        : '这个分类还没有记录';
+      el.textContent = state.filter === 'all' ? t('sub.emptyAll') : t('sub.emptyFilter');
       return;
     }
-    var kindName = Core.KINDS[state.filter];
-    var txt = rows.length + ' 个' + (kindName || '日子');
+    // 单数用 kindl（小写单数），复数用 plural；中文两者文字相同
+    var k = rows.length === 1 ? kindLower(state.filter) : pluralOf(state.filter);
+    var txt = t('sub.count', { n: rows.length, k: k });
 
     var todayCount = rows.filter(function (r) { return r.metric.days === 0 && r.metric.mode !== 'none'; }).length;
     var near = null;
     for (var i = 0; i < rows.length; i++) {
       if (rows[i].metric.mode === 'remaining') { near = rows[i]; break; }
     }
-    if (todayCount) txt += ' · 今天 ' + todayCount + ' 个';
-    else if (near) txt += ' · 最近 ' + near.metric.days + ' 天';
-    if (state.filter === 'all' && archivedCount) txt += ' · 归档 ' + archivedCount + ' 个';
+    if (todayCount) txt += t('sub.today', { n: todayCount });
+    else if (near) txt += t('sub.near', { n: near.metric.days });
+    if (state.filter === 'all' && archivedCount) txt += t('sub.archivedN', { n: archivedCount });
     el.textContent = txt;
   }
 
   /** 归档筛选胶囊上的计数 */
   function renderArchiveEntry(count) {
     var chip = document.querySelector('.cd-chip[data-f="archive"]');
-    if (chip) chip.textContent = count ? '归档 ' + count : '归档';
+    if (chip) chip.textContent = count ? t('chip.archiveN', { n: count }) : t('chip.archive');
   }
 
   /** 分区为空时的等高占位，避免切换分类时卡片突然消失、页面跳动 */
@@ -294,10 +389,10 @@
   }
 
   function heroEmptyText() {
-    if (isArchiveView()) return ['归档', '归档里的日子不参与置顶'];
+    if (isArchiveView()) return [t('chip.archive'), t('hero.emptyArchiveHint')];
     var kindName = Core.KINDS[state.filter];
-    if (kindName) return [kindName, '这个分类还没有记录'];
-    return ['里程碑', '点右上角「添加」记下第一个日子'];
+    if (kindName) return [kindName, t('sub.emptyFilter')];
+    return [t('appName'), t('hero.emptyHint')];
   }
 
   // 上一次渲染出的卡片内容：一致就不碰 DOM（省一次重排，也不会重播入场动画）
@@ -309,9 +404,9 @@
     var html;
 
     if (!row || row.metric.mode === 'none') {
-      var t = heroEmptyText();
+      var empty = heroEmptyText();
       rc = '128, 138, 155';
-      html = heroPlaceholderHtml(t[0], t[1]);
+      html = heroPlaceholderHtml(empty[0], empty[1]);
     } else {
       var ev = row.ev;
       var occ = row.occ;
@@ -320,12 +415,12 @@
       rc = hexToRgb(ev.color).join(',');
 
       var label = remain
-        ? '距离 <b>' + esc(row.name) + '</b> 还有'
-        : '<b>' + esc(row.name) + '</b> 已经走过';
+        ? I.html('hero.remainLabel', { name: esc(row.name) })
+        : I.html('hero.elapsedLabel', { name: esc(row.name) });
 
       var heroCls = remain ? 'cd-hero-num cd-hero-num--remain' : 'cd-hero-num cd-hero-num--elapsed';
       var num = '<div class="' + heroCls + '">' +
-          m.days + '<span>' + (remain ? '剩余天数' : '已过天数') + '</span></div>';
+          m.days + '<span>' + t(remain ? 'hero.unitRemain' : 'hero.unitElapsed') + '</span></div>';
 
       var lf = L.solarToLunar(occ.date);
       var meta = [
@@ -337,9 +432,11 @@
       var bar = '';
       var p = Core.cycleProgress(ev, occ, today);
       if (p !== null) {
+        var pct = Math.round(p * 100);
         bar =
-          '<div class="cd-bar"><i style="width:' + Math.round(p * 100) + '%"></i></div>' +
-          '<div class="cd-bar-text"><span>本年度已过 ' + Math.round(p * 100) + '%</span><span>共 365 天</span></div>';
+          '<div class="cd-bar"><i style="width:' + pct + '%"></i></div>' +
+          '<div class="cd-bar-text"><span>' + t('hero.barDone', { p: pct }) + '</span><span>' +
+            t('hero.barTotal') + '</span></div>';
       }
 
       html =
@@ -358,7 +455,7 @@
     el.innerHTML = html;
   }
 
-  /** 倒数日已经过期（关掉了「过期后重新开始倒数」，且日子已经过去） */
+  /** 倒数日已经过期（关掉了「过期后重新开始倒数」，且日期已经过去） */
   function isExpiredCountdown(ev, m) {
     return ev.kind === 'countdown' && m.mode === 'elapsed';
   }
@@ -381,14 +478,14 @@
     var numText, unitText, numCls = '';
     if (m.mode === 'none') {
       numText = '—';
-      unitText = '超出可算年限';
+      unitText = t('unit.overflow');
     } else if (m.mode === 'remaining') {
       numText = String(m.days);
-      unitText = m.days === 0 ? '就是今天' : '剩余天数';
+      unitText = m.days === 0 ? t('unit.todayRemain') : t('unit.remain');
       numCls = ' cd-item-num--remain';
     } else {
       numText = String(m.days);
-      unitText = m.days === 0 ? '就在今天' : '已过天数';
+      unitText = m.days === 0 ? t('unit.todayElapsed') : t('unit.elapsed');
       numCls = ' cd-item-num--elapsed';
     }
 
@@ -404,10 +501,10 @@
 
     var tag;
     if (isArchiveView()) {
-      tag = '<span class="cd-tag cd-tag--muted">已归档 · ' + esc(Core.KINDS[ev.kind]) + '</span>';
+      tag = '<span class="cd-tag cd-tag--muted">' + esc(t('tag.archived', { k: Core.KINDS[ev.kind] })) + '</span>';
     } else if (expired) {
       // 过期了就把类型标签换成更直白的说法，一眼看得出这条已经结束
-      tag = '<span class="cd-tag cd-tag--expired">过期的倒数日</span>';
+      tag = '<span class="cd-tag cd-tag--expired">' + esc(t('tag.expired')) + '</span>';
     } else {
       tag = '<span class="cd-tag">' + esc(Core.KINDS[ev.kind]) + '</span>';
     }
@@ -435,24 +532,27 @@
               '<rect x="3" y="4" width="18" height="4" rx="1.4"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/>' +
               '<path d="M10 12h4"/></svg>' +
           '</div>' +
-          '<h3>归档里还没有日子</h3>' +
-          '<p>把不重要的日子归档后，它们不会出现在「全部」里，也不会提醒。随时可以取消归档。</p>' +
-          '<button type="button" class="cd-btn-ghost" data-add>添加一个归档的日子</button>' +
+          '<h3>' + esc(t('sub.archivedEmpty')) + '</h3>' +
+          '<p>' + esc(t('empty.archiveHint')) + '</p>' +
+          '<button type="button" class="cd-btn-ghost" data-add>' + esc(t('empty.archiveBtn')) + '</button>' +
         '</div>';
     }
     var filtered = state.filter !== 'all';
     var kindName = Core.KINDS[state.filter] || '';
-    var head = filtered ? '这个分类还是空的' : '记录第一个重要的日子';
-    var desc = filtered ? '点下面的按钮，会自动按「' + kindName + '」新建；也可以换一个筛选看看。' : '生日、纪念日、考试倒数，都能自动帮你算好还有多久。';
+    var head = filtered ? t('empty.filterTitle') : t('empty.allTitle');
+    var desc = filtered
+      ? t('empty.filterDesc', { k: kindLower(state.filter) })
+      : t('empty.allDesc');
     return '<div class="cd-empty">' +
         '<div class="cd-empty-ico">' +
           '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">' +
             '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>' +
             '<circle cx="12" cy="16" r="2.2"/></svg>' +
         '</div>' +
-        '<h3>' + head + '</h3>' +
-        '<p>' + desc + '</p>' +
-        '<button type="button" class="cd-btn-ghost" data-add>添加一个' + (kindName || '日子') + '</button>' +
+        '<h3>' + esc(head) + '</h3>' +
+        '<p>' + esc(desc) + '</p>' +
+        '<button type="button" class="cd-btn-ghost" data-add>' +
+          esc(t('empty.btn', { k: filtered ? kindLower(state.filter) : kindLower('') })) + '</button>' +
       '</div>';
   }
 
@@ -553,16 +653,16 @@
       repeat: true,
       color: Core.COLORS[0],
       note: '',
-      // 新日子默认加入任务列表，渠道可在此页单独改
+      // 新事项默认加入任务列表，渠道可在此页单独改
       remind: Core.defaultRemind(),
-      // 在归档视图里新建，默认就是归档状态，符合「我要放一个不重要的日子」
+      // 在归档视图里新建，默认就是归档状态，符合「我要放一个不重要的事项」
       archived: isArchiveView()
     };
   }
 
   function buildYearSelect() {
     var html = '';
-    for (var y = L.MIN_YEAR; y <= L.MAX_YEAR; y++) html += '<option value="' + y + '">' + y + ' 年</option>';
+    for (var y = L.MIN_YEAR; y <= L.MAX_YEAR; y++) html += '<option value="' + y + '">' + t('lunar.yearOpt', { y: y }) + '</option>';
     $('#fLY').innerHTML = html;
   }
 
@@ -586,7 +686,7 @@
     $('#fColors').innerHTML = Core.COLORS.map(function (c) {
       return '<button type="button" class="cd-color" data-c="' + c + '" aria-pressed="' +
         (c === selected ? 'true' : 'false') + '" style="background:' + c + ';color:' + c +
-        '" aria-label="颜色 ' + c + '"></button>';
+        '" aria-label="' + esc(t('form.colorAria', { c: c })) + '"></button>';
     }).join('');
   }
 
@@ -617,15 +717,18 @@
     var solar = L.lunarToSolar(l.year, l.month, l.day, l.isLeap);
     if (!solar) {
       p.className = 'cd-hint warn';
-      p.textContent = '这个农历日期不存在，请调整年份或月份';
+      p.textContent = t('lunar.invalid');
       return;
     }
     var dim = l.isLeap ? L.leapDays(l.year) : L.monthDays(l.year, l.month);
     p.className = 'cd-hint';
-    p.textContent = L.lunarText(l.month, l.day, l.isLeap) +
-      '，对应公历 ' + Core.ymd(solar) + ' ' + Core.WEEK[solar.getDay()] +
-      ' · ' + L.ganzhiOf(l.year) + '年 · 属' + L.zodiacOf(l.year) +
-      (l.day > dim ? '（该月仅 ' + dim + ' 天，按' + L.dayName(dim) + '计）' : '');
+    p.textContent = t('lunar.preview', {
+      lunar: L.lunarText(l.month, l.day, l.isLeap),
+      date: Core.ymd(solar),
+      week: Core.WEEK[solar.getDay()],
+      gz: L.ganzhiOf(l.year),
+      z: L.zodiacOf(l.year)
+    }) + (l.day > dim ? t('lunar.dimSuffix', { n: dim, d: L.dayName(dim) }) : '');
   }
 
   function syncLunarControls(resetDay) {
@@ -663,9 +766,10 @@
             esc(f.name) + '</button>';
         }).join('') + '</div>';
     });
-    html += '<div class="cd-preset-group">自定义</div>' +
+    html += '<div class="cd-preset-group">' + esc(t('group.custom')) + '</div>' +
       '<div class="cd-preset-list">' +
-        '<button type="button" class="cd-preset cd-preset--free" data-k="" aria-pressed="false">自定义节日</button>' +
+        '<button type="button" class="cd-preset cd-preset--free" data-k="" aria-pressed="false">' +
+          esc(t('form.customFestival')) + '</button>' +
       '</div>';
     $('#fPresets').innerHTML = html;
   }
@@ -713,7 +817,7 @@
     if (!el) return;
     var kind = segValue('#fKind') || 'countdown';
     var n = (!state.editingId && kind === 'festival') ? selectedPresets().length : 0;
-    el.textContent = n > 1 ? '添加 ' + n + ' 个' : '保存';
+    el.textContent = n > 1 ? t('saveN', { n: n }) : t('save');
   }
 
   function refreshPresetHint() {
@@ -723,7 +827,7 @@
     el.className = 'cd-hint';
 
     if (!keys.length) {
-      el.textContent = '选一个节日自动填好日期；也可多选几个一次加入，或选「自定义节日」自己填。';
+      el.textContent = t('preset.none');
       return;
     }
 
@@ -732,25 +836,30 @@
         var f = Core.festivalByKey(k);
         return f ? f.name : k;
       });
-      el.textContent = '已选 ' + keys.length + ' 个：' + names.join('、') + '，保存后一次全部加入。';
+      el.textContent = t('preset.multi', { n: keys.length, names: names.join(langListSep()) });
       return;
     }
 
     var f = Core.festivalByKey(keys[0]);
-    var when = (state.draft && state.draft.date) ? '下一次 ' + state.draft.date + '。' : '';
+    var when = (state.draft && state.draft.date) ? t('preset.next', { date: state.draft.date }) : '';
     var text;
     if (!f) {
-      text = '自定义节日：自己填名称和日期，每年自动倒数。';
+      text = t('preset.custom');
     } else if (f.group === 'term') {
-      text = f.name + '按节气推算，每年落在 4 月 4-5 日，日期会自动更新。';
+      text = t('preset.term', { name: f.name });
     } else if (f.key === 'chuxi') {
-      text = '除夕按腊月最后一天计算，腊月是廿九天的年份自动按廿九。';
+      text = t('preset.chuxi');
     } else if (f.group === 'lunar') {
-      text = f.name + '按农历计算，每年公历日期不同。';
+      text = t('preset.lunar', { name: f.name });
     } else {
-      text = f.name + '每年 ' + f.month + ' 月 ' + f.day + ' 日。';
+      text = t('preset.solar', { name: f.name, m: f.month, d: f.day });
     }
     el.textContent = text + when;
+  }
+
+  /** 列举多项时的分隔符：中文用顿号，英文用逗号 */
+  function langListSep() {
+    return I.getLang() === 'en' ? ', ' : '、';
   }
 
   /**
@@ -853,7 +962,7 @@
   }
 
   function fillSheet(d, isEdit) {
-    $('#cdSheetTitle').textContent = isEdit ? '编辑日子' : '新建' + (Core.KINDS[d.kind] || '日子');
+    $('#cdSheetTitle').textContent = isEdit ? t('sheet.edit') : t('sheet.new', { k: kindLower(d.kind) });
     $('#fTitle').value = d.title || '';
     $('#fNote').value = d.note || '';
     setSeg('#fKind', d.kind);
@@ -895,21 +1004,21 @@
 
     if (archived) {
       el.className = 'cd-hint warn';
-      el.textContent = '已归档：不在「全部」里显示，也不会提醒，任务列表里的对应任务会被删除。';
+      el.textContent = t('remind.hintArchived');
       return;
     }
     if (taskOn && snackOn) {
       el.className = 'cd-hint';
-      el.textContent = '到日子会生成一条任务放进「' + project + '」，并在打开应用时额外弹提示条。';
+      el.textContent = t('remind.hintBoth', { p: project });
     } else if (taskOn) {
       el.className = 'cd-hint';
-      el.textContent = '到日子会生成一条任务放进「' + project + '」项目，随应用同步；关掉这个开关，任务会被删除。';
+      el.textContent = t('remind.hintTask', { p: project });
     } else if (snackOn) {
       el.className = 'cd-hint';
-      el.textContent = '只在打开应用时弹提示条；插件没有系统级后台推送权限，应用没开就不推送。';
+      el.textContent = t('remind.hintSnack');
     } else {
       el.className = 'cd-hint warn';
-      el.textContent = '这个日子不会提醒你（两个渠道都关着）。';
+      el.textContent = t('remind.hintNone');
     }
   }
 
@@ -924,18 +1033,22 @@
     var st = state.data.settings || Core.emptySettings();
     $('#sHero').checked = st.hero !== false;
     $('#sStrike').checked = st.strikeExpired !== false;
+    setSeg('#sLang', st.lang || 'auto');
 
     var events = state.data.events || [];
     var archived = 0;
     for (var i = 0; i < events.length; i++) if (events[i].archived) archived++;
     $('#sDataInfo').textContent = events.length
-      ? '当前共 ' + events.length + ' 个日子' + (archived ? '（其中 ' + archived + ' 个已归档）' : '')
-      : '当前还没有记录';
+      ? t('data.count', { n: events.length }) + (archived ? t('data.archivedN', { n: archived }) : '')
+      : t('data.empty');
 
     var meta = document.querySelector('meta[name="cd-version"]');
     var ver = meta ? (meta.getAttribute('content') || '') : '';
-    $('#sAbout').textContent = '里程碑' + (ver ? ' v' + ver : '') +
-      ' · 提醒任务写入项目「' + st.taskProject + '」· 数据随应用同步';
+    $('#sAbout').textContent = t('about', {
+      name: t('appName'),
+      ver: ver || '-',
+      p: st.taskProject
+    });
   }
 
   /** 清空同步数据与本机缓存。调用前必须已经过二次确认 */
@@ -958,21 +1071,25 @@
 
     closeSettings();
     renderAll();
-    toast('已清除所有数据');
+    toast(t('toast.cleared'));
   }
 
   /** 两段确认：先讲清影响面，再确认不可恢复 */
   function askClearData() {
     var n = (state.data.events || []).length;
     var head = n
-      ? '将清除全部 ' + n + ' 个日子、设置与本机提醒缓存，并移除插件在任务列表里生成的提醒任务。'
-      : '将清除当前设置与本机提醒缓存，并移除插件在任务列表里生成的提醒任务。';
-    return confirmDialog(head + ' 此操作不可撤销。', '继续', '清除数据').then(function (go) {
+      ? t('dialog.clearHeadN', { n: n })
+      : t('dialog.clearHeadEmpty');
+    return confirmDialog(
+      head + ' ' + t('dialog.clearTail'),
+      t('dialog.continue'),
+      t('dialog.clearTitle1')
+    ).then(function (go) {
       if (!go) return;
       return confirmDialog(
-        '最后确认：清除后无法恢复，所有日子里的事都会消失。确定要清空吗？',
-        '确定清除',
-        '再次确认'
+        t('dialog.clearConfirm'),
+        t('dialog.clearOk'),
+        t('dialog.clearTitle2')
       ).then(function (ok) {
         if (ok) clearAllData();
       });
@@ -1003,7 +1120,7 @@
     renderAll();
     persist();
     refreshSettingsForm();
-    toast('已保存');
+    toast(t('toast.saved'));
   }
 
   var sheetTimer = null;
@@ -1136,14 +1253,14 @@
       });
     });
 
-    if (!created.length) { toast('请选择节日'); return; }
+    if (!created.length) { toast(t('toast.pickFestival')); return; }
 
     // 逐个 push：一次加几十个也不会超出 apply 的参数上限
     for (var i = 0; i < created.length; i++) state.data.events.push(created[i]);
     closeSheet();
     persist();
     renderAll();
-    toast('已添加 ' + created.length + ' 个节日');
+    toast(t('toast.batch', { n: created.length }));
   }
 
   function saveSheet() {
@@ -1160,7 +1277,7 @@
       var pf = d.preset ? Core.festivalByKey(d.preset) : null;
       d.title = pf ? pf.name : Core.KINDS[d.kind];
     }
-    if (!d.date) { toast('请选择日期'); return; }
+    if (!d.date) { toast(t('toast.pickDate')); return; }
 
     var events = state.data.events;
     var replaced = false;
@@ -1185,17 +1302,17 @@
     closeSheet();
     persist();
     renderAll();
-    toast(replaced ? '已更新' : '已添加');
+    toast(replaced ? t('toast.updated') : t('toast.added'));
   }
 
   function confirmDialog(title, okLabel, dialogTitle) {
-    var label = okLabel || '删除';
+    var label = okLabel || t('dialog.delete');
     if (window.PluginAPI && typeof window.PluginAPI.openDialog === 'function') {
       return apiCall('openDialog', {
-        title: dialogTitle || '删除确认',
+        title: dialogTitle || t('dialog.deleteTitle'),
         // 纯文本 + <p>：不拼接调用方传来的 HTML，避免把数据当标签解析
         htmlContent: '<p>' + esc(title) + '</p>',
-        buttons: [{ label: '取消' }, { label: label, color: 'warn', raised: true }]
+        buttons: [{ label: t('cancel') }, { label: label, color: 'warn', raised: true }]
       }).then(function (r) { return r === label; }, function () { return false; });
     }
     return Promise.resolve(window.confirm(title));
@@ -1207,13 +1324,13 @@
     var ev = findEventById(id);
     if (!ev) return;
 
-    confirmDialog('确定删除「' + nameOf(ev) + '」吗？').then(function (ok) {
+    confirmDialog(t('dialog.deleteOne', { name: nameOf(ev) })).then(function (ok) {
       if (!ok) return;
       state.data.events = state.data.events.filter(function (x) { return x.id !== id; });
       closeSheet();
       persist();
       renderAll();
-      toast('已删除');
+      toast(t('toast.deleted'));
     });
   }
 
@@ -1225,7 +1342,7 @@
   function saveNow(json) {
     state.lastWritten = json;
     return Store.save(json).then(function (ok) {
-      if (!ok) { state.lastWritten = ''; toast('保存失败，请稍后重试'); }
+      if (!ok) { state.lastWritten = ''; toast(t('toast.saveFail')); }
       return ok;
     });
   }
@@ -1257,6 +1374,8 @@
       if (raw) {
         var parsed = parseStored(raw);
         if (parsed) {
+          // 先切语言再归一化：默认项目名等文案要跟随语言
+          applyLang(parsed.settings && parsed.settings.lang);
           state.data = Core.normalize(parsed);
           state.lastWritten = JSON.stringify(state.data);
         } else {
@@ -1270,6 +1389,20 @@
   function registerHooks() {
     var P = window.PluginAPI;
     if (!P || typeof P.registerHook !== 'function' || !P.Hooks) return;
+
+    // 宿主里切了语言：语言偏好是「自动」时跟着换，界面立刻重排
+    var lKey = P.Hooks.LANGUAGE_CHANGE;
+    if (lKey) {
+      try {
+        P.registerHook(lKey, function () {
+          if (langPref() !== 'auto') return;
+          applyLang('auto');
+          renderAll();
+          refreshSettingsForm();
+        });
+      } catch (e) { /* 旧版本宿主无此钩子 */ }
+    }
+
     var key = P.Hooks.PERSISTED_DATA_CHANGED;
     if (!key) return;
     try {
@@ -1286,8 +1419,9 @@
             if (nextJson === JSON.stringify(state.data)) return;
             state.data = next;
             state.lastWritten = nextJson;
+            applyLang(next.settings && next.settings.lang);
             renderAll();
-            if (!state.editingId) toast('已同步到最新数据');
+            if (!state.editingId) toast(t('toast.synced'));
           } catch (e) { /* 忽略损坏数据 */ }
         });
       });
@@ -1332,8 +1466,10 @@
       refreshRepeatRow();
       refreshPresetRow(b.dataset.v);
       refreshCalendarRow();
-      // 新建时标题跟着类型走，编辑时保持「编辑日子」
-      if (!state.editingId) $('#cdSheetTitle').textContent = '新建' + (Core.KINDS[b.dataset.v] || '日子');
+      // 新建时标题跟着类型走，编辑时保持「编辑事项」
+      if (!state.editingId) {
+        $('#cdSheetTitle').textContent = t('sheet.new', { k: kindLower(b.dataset.v) });
+      }
     });
 
     $('#fPresets').addEventListener('click', function (e) {
@@ -1388,6 +1524,12 @@
     $('#cdSettings').addEventListener('click', openSettings);
     $('#cdSetClose').addEventListener('click', closeSettings);
     $('#cdSetMask').addEventListener('click', closeSettings);
+    $('#sLang').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      setSeg('#sLang', b.dataset.v);
+      setLangPref(b.dataset.v);
+    });
     $('#sHero').addEventListener('change', function () {
       updateSetting('hero', this.checked);
     });
@@ -1414,10 +1556,8 @@
 
   function init() {
     detectTheme();
-    buildYearSelect();
-    buildMonthSelect();
-    buildColors(Core.COLORS[0]);
-    buildPresets();
+    // 先用系统语言把骨架铺好，load() 拿到存下的偏好后会再切一次
+    applyLang(state.data.settings && state.data.settings.lang);
     bind();
     load();
     registerHooks();

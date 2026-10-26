@@ -4,6 +4,7 @@
  *   node test/minify.test.js
  */
 'use strict';
+const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const build = require('../build.js');
@@ -49,7 +50,14 @@ function loadInSandbox(code) {
   return sandbox;
 }
 
-const rawCore = [build.read('lunar.js'), build.read('event-core.js'), build.read('reminder-tasks.js')].join('\n\n');
+// 语言包必须在 i18n.js 之前：事件核心的文案常量取自注册表
+const localeFiles = fs.readdirSync(path.join(__dirname, '..', 'src', 'locales'))
+  .filter((f) => /\.js$/.test(f))
+  .sort((a, b) => (a === 'zh.js' ? -1 : b === 'zh.js' ? 1 : a < b ? -1 : 1))
+  .map((f) => 'locales/' + f);
+
+const rawCore = localeFiles.concat(['i18n.js', 'lunar.js', 'event-core.js', 'reminder-tasks.js'])
+  .map((f) => build.read(f)).join('\n\n');
 const minCore = build.minifyJs(rawCore);
 
 const RAW = loadInSandbox(rawCore);
@@ -93,9 +101,11 @@ eq(build.minifyJs('var t = `x ${a} // y`;'), 'var t = `x ${a} // y`;', '模板�
 eq(build.minifyJs('var r = /a\\/b[/]/g;'), 'var r = /a\\/b[/]/g;', '正则里的转义与字符类');
 eq(build.minifyJs('var d = a / b / c;'), 'var d = a / b / c;', '除号不被当正则');
 eq(build.minifyJs('var x = 1; /* c */ var y = 2;'), 'var x = 1; var y = 2;', '块注释删除（原位留一个空格）');
-eq(build.minifyJs('var a = 1; // tail\nvar b = 2;'), 'var a = 1;\nvar b = 2;', '行注释删除');
-eq(build.minifyJs('var a=1;\n\n\n   var b=2;'), 'var a=1;\nvar b=2;', '空行与缩进');
+eq(build.minifyJs('var a = 1; // tail\nvar b = 2;'), 'var a = 1;var b = 2;', '行注释删除（分号后的换行也是多余的）');
+eq(build.minifyJs('var a=1;\n\n\n   var b=2;'), 'var a=1;var b=2;', '空行与缩进');
 eq(build.minifyJs('a /*c*/ b'), 'a b', '注释两侧留空格（不粘词）');
+eq(build.minifyJs('function f() {\n  return\n  1\n}\nvar g = 2'), 'function f() {return\n1\n}\nvar g = 2', 'return / } 之后的换行必须保留（ASI）');
+eq(build.minifyJs('x = {a: 1,\nb: 2}'), 'x = {a: 1,b: 2}', '逗号后的换行可丢');
 
 console.log('[3] 公历 → 农历（1900-2100 抽样 1984 天）');
 let n = 0;

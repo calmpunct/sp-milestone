@@ -1,9 +1,9 @@
 /* ============================================================
  * 里程碑 — 宿主侧逻辑
  *
- * 两条提醒通道，都是「每个日子各自选择」的：
- *   1. 任务列表投影：该日子开着「加入任务列表」时，把下一次提醒写成一条任务
- *   2. 提示条：该日子开着「打开应用时弹提示条」时，应用启动/跨天检查时弹 snack
+ * 两条提醒通道，都是「每个事项各自选择」的：
+ *   1. 任务列表投影：该事项开着「加入任务列表」时，把下一次提醒写成一条任务
+ *   2. 提示条：该事项开着「打开应用时弹提示条」时，应用启动/跨天检查时弹 snack
  *
  * 一致性策略：插件数据是唯一真相，任务只是投影。每次对账做全量 diff
  * （新增 / 更新 / 删除），因此删事件、改日期、关掉某天的任务提醒、归档，
@@ -11,6 +11,8 @@
  * ============================================================ */
 (function () {
   'use strict';
+
+  var I = window.I18N;
 
   var SEEN_KEY = 'cd-remind-seen';
   var MAP_KEY = 'cd-task-map-v1';
@@ -20,6 +22,35 @@
   var DONE_KEEP_DAYS = 800;         // 已处理记录保留到下一个年度周期，防止归档后被重建
   var REBUILD_DELAY = 1500;         // 任务被外部删除后延迟重建，合并连续删除
   var MAX_TASKS = 200;              // 安全阀：避免异常数据一次灌爆任务列表
+
+  /* ---------------- 语言 ---------------- */
+
+  function navLang() {
+    try {
+      return (window.navigator && window.navigator.language) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /** 宿主应用的语言（PluginAPI.cfg.lang），老版本没有就退回系统语言 */
+  function hostLang() {
+    try {
+      var api = P();
+      if (api && api.cfg && api.cfg.lang) return api.cfg.lang;
+    } catch (e) { /* ignore */ }
+    return navLang();
+  }
+
+  /** 语言偏好存在同步数据里；宿主侧与界面共用同一套解析规则 */
+  function applyLang(settings) {
+    var l = I.resolve(settings && settings.lang, hostLang());
+    I.setLang(l);
+    EventCore.setLang(l);
+  }
+
+  // 入口名称在注册时就要定，此时还没有数据，先按系统语言给一个
+  applyLang(null);
 
   var dataCache = null;
   var timer = null;
@@ -74,16 +105,17 @@
   function registerEntries() {
     var api = P();
     if (!api) return;
+    var label = I.t('appName');
 
     try {
       if (typeof api.registerSidePanelButton === 'function') {
-        api.registerSidePanelButton({ label: '里程碑', icon: 'event', onClick: openView });
+        api.registerSidePanelButton({ label: label, icon: 'event', onClick: openView });
       }
     } catch (e) { /* ignore */ }
 
     try {
       if (typeof api.registerMenuEntry === 'function') {
-        api.registerMenuEntry({ label: '里程碑', icon: 'event', onClick: openView });
+        api.registerMenuEntry({ label: label, icon: 'event', onClick: openView });
       }
     } catch (e) { /* ignore */ }
   }
@@ -99,19 +131,28 @@
       var isStr = typeof raw === 'string';
       var key = isStr ? raw : '';
       // 同步数据没变化时直接复用上次的规范化结果（10 分钟一轮的定时对账常走这条）
-      if (key && rawValue && rawKey === key) return rawValue;
+      if (key && rawValue && rawKey === key) {
+        // 语言可能被宿主切换过：即使数据没变也要按当前语言重算一次
+        applyLang(rawValue.settings);
+        return rawValue;
+      }
 
       var data;
       if (!raw) {
+        applyLang(null);
         data = EventCore.normalize(null);
       } else if (!isStr) {
+        applyLang(raw.settings);
         data = EventCore.normalize(raw);
       } else {
+        var parsed = null;
         try {
-          data = EventCore.normalize(JSON.parse(raw));
+          parsed = JSON.parse(raw);
         } catch (e) {
-          data = EventCore.normalize(null);
+          parsed = null;
         }
+        applyLang(parsed && parsed.settings);
+        data = EventCore.normalize(parsed);
       }
       rawKey = key;
       rawValue = data;
@@ -157,6 +198,16 @@
           var done = pruneDone(readDone(), Date.now());
           done[mk.eventId + '@' + mk.cycle] = Date.now();
           writeDone(done);
+        });
+      } catch (e) { /* ignore */ }
+    }
+
+    // 宿主里切了语言：任务标题/备注要跟着换语言，数据没变也要重算一遍
+    var langKey = api.Hooks.LANGUAGE_CHANGE;
+    if (langKey) {
+      try {
+        api.registerHook(langKey, function () {
+          reconcile('language-change');
         });
       } catch (e) { /* ignore */ }
     }
@@ -366,7 +417,7 @@
           try { api.log && api.log.warn('[里程碑] 提醒任务超过上限，仅同步前 ' + MAX_TASKS + ' 个'); } catch (e) { /* ignore */ }
         }
 
-        // 3. 对账：期望集合之外的一律删除，所以「关掉某个日子的任务提醒」
+        // 3. 对账：期望集合之外的一律删除，所以「关掉某个事项的任务提醒」
         //    和「把它归档」都会让对应任务消失，不需要额外的清理代码
         var plan = ReminderTasks.plan({ desired: sources, existing: managed, today: today });
 
@@ -485,9 +536,9 @@
   }
 
   function whenText(offset) {
-    if (offset === 0) return '今天';
-    if (offset === 1) return '明天';
-    return offset + ' 天后';
+    if (offset === 0) return I.t('snack.today');
+    if (offset === 1) return I.t('snack.tomorrow');
+    return I.t('snack.inDays', { n: offset });
   }
 
   function runSnack(data) {
@@ -496,7 +547,7 @@
 
     var today = new Date();
     var now = today.getTime();
-    // dueReminders 内部只挑「开了提示条且未归档」的日子，渠道判断不在这里
+    // dueReminders 内部只挑「开了提示条且未归档」的事项，渠道判断不在这里
     var due = EventCore.dueReminders(data.events, today);
     if (!due.length) return;
 
@@ -515,8 +566,8 @@
     var parts = fresh.slice(0, 3).map(function (item) {
       return whenText(item.offset) + ' · ' + item.title;
     });
-    var msg = parts.join('｜');
-    if (fresh.length > 3) msg += '｜等 ' + fresh.length + ' 个日子';
+    var msg = parts.join(I.t('snack.sep'));
+    if (fresh.length > 3) msg += I.t('snack.sep') + I.t('snack.more', { n: fresh.length });
 
     try {
       P().showSnack({ msg: msg, type: 'INFO', ico: 'event_available' });

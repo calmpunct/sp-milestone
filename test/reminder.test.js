@@ -35,7 +35,8 @@ function ev(o) {
 function data(events, settings) {
   return {
     version: 2,
-    settings: Object.assign({ leapPolicy: 'regular', taskProject: '纪念日提醒' }, settings || {}),
+    // 固定中文文案（jsdom 的 navigator.language 是 en-US）
+    settings: Object.assign({ lang: 'zh', taskProject: '纪念日提醒' }, settings || {}),
     events: events
   };
 }
@@ -175,7 +176,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     ok(!second.calls.some((c) => c.op === 'add'), '没有新建');
   }
 
-  console.log('[4] 删除日子 → 任务消失');
+  console.log('[4] 删除事项 → 任务消失');
   {
     const e = ev({ id: 'c1', title: '项目上线', date: inDays(20), remind: { task: true, snack: false, offsets: [3] } });
     const first = boot(data([e]));
@@ -191,7 +192,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     ok(second.calls.some((c) => c.op === 'delete'), '确实调用了 deleteTask');
   }
 
-  console.log('[5] 关闭该日子的提醒 → 任务消失');
+  console.log('[5] 关闭该事项的提醒 → 任务消失');
   {
     const on = ev({ id: 'd1', title: '入职纪念', date: inDays(30), remind: { task: true, snack: false, offsets: [3] } });
     const first = boot(data([on]));
@@ -282,7 +283,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     ok(!calls.some((c) => c.op === 'add'), '没有新建');
   }
 
-  console.log('[10] 提示条按每个日子的开关');
+  console.log('[10] 提示条按每个事项的开关');
   {
     const mk = (remind, archived) => {
       const e = ev({ id: 'i1', title: '甲', date: inDays(0), remind: remind });

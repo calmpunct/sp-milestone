@@ -23,6 +23,8 @@ const todayStr = Core.ymd(TODAY);
 
 const SEED = {
   version: 1,
+  // 固定中文：jsdom 的 navigator.language 是 en-US，不写这一项界面会是英文
+  settings: { lang: 'zh' },
   events: [
     { id: 'b1', title: '妈妈生日', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
       lunar: { year: 1968, month: 4, day: 18, isLeap: false }, repeat: true, color: '#d6336c', note: '' },
@@ -97,9 +99,9 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   eq(document.querySelectorAll('.cd-item').length, 6, '渲染 6 条记录');
   ok($('.cd-hero'), '主视觉卡片存在');
   eq($('.cd-sub').textContent,
-    '6 个日子 · ' + (todayCount ? '今天 ' + todayCount + ' 个' : '最近 ' + nearest.r.days + ' 天'),
+    '6 个事项 · ' + (todayCount ? '今天 ' + todayCount + ' 个' : '最近 ' + nearest.r.days + ' 天'),
     '副标题统计');
-  ok($('.cd-hero-label').textContent.includes(nearest.e.title), '最近的日子在卡片上');
+  ok($('.cd-hero-label').textContent.includes(nearest.e.title), '最近的事项在卡片上');
   eq(document.querySelectorAll('.cd-item.is-today').length, todayCount, '今天条目高亮数量');
 
   const subs = Array.from(document.querySelectorAll('.cd-item-sub')).map((n) => n.textContent);
@@ -200,7 +202,7 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   eq(mom.lunar.month, 5, '农历月份已写入');
   ok(/^\d{4}-\d{2}-\d{2}$/.test(mom.date), '公历日期已同步计算');
 
-  console.log('[8] 每个日子的提醒渠道');
+  console.log('[8] 每个事项的提醒渠道');
   byId('b4').click();
   await wait(150);
   eq($('#fTask').checked, true, '默认加入任务列表');
@@ -347,10 +349,10 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   document.querySelector('.cd-chip[data-f="archive"]').click();
   await wait(60);
   eq(document.querySelector('.cd-chip[data-f="archive"]').getAttribute('aria-pressed'), 'true', '归档胶囊进入按下态');
-  eq(document.querySelectorAll('.cd-item').length, 1, '归档视图只有归档的日子');
-  ok(byId('b3'), '归档的日子在归档视图里');
+  eq(document.querySelectorAll('.cd-item').length, 1, '归档视图只有归档的事项');
+  ok(byId('b3'), '归档的事项在归档视图里');
   ok($('.cd-sub').textContent.includes('已归档'), '副标题说明已归档');
-  ok($('#cdHero').innerHTML.includes('cd-hero--empty'), '归档视图用占位卡，不置顶任何日子');
+  ok($('#cdHero').innerHTML.includes('cd-hero--empty'), '归档视图用占位卡，不置顶任何事项');
   ok(document.querySelector('.cd-list').textContent.includes('已归档 · 纪念日'), '条目带已归档标签');
 
   // 归档视图里新建：默认就是归档状态
@@ -421,7 +423,7 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   {
     const seed = {
       version: 4,
-      settings: { leapPolicy: 'regular', taskProject: '里程碑提醒', hero: true },
+      settings: { lang: 'zh', taskProject: '里程碑提醒', hero: true },
       events: [{ id: 'x1', title: '甲生日', kind: 'birthday', calendar: 'solar', date: '2000-01-01',
         repeat: true, color: '#f59f00', note: '' }]
     };
@@ -653,7 +655,7 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     $('#cdSettings').click();
     await wait(150);
     eq($('#sClear').textContent.trim(), '清除里程碑数据缓存', '设置里有清除按钮');
-    ok(/当前共 \d+ 个日子/.test($('#sDataInfo').textContent), '数据概况显示条数：' + $('#sDataInfo').textContent);
+    ok(/当前共 \d+ 个事项/.test($('#sDataInfo').textContent), '数据概况显示条数：' + $('#sDataInfo').textContent);
 
     // 第一次确认点「取消」→ 什么都不该发生
     window.__answers = ['取消'];
@@ -696,7 +698,72 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     eq(document.querySelectorAll('.cd-item').length, 1, '新条目正常显示');
   }
 
-  console.log('[21] 无运行时错误');
+  console.log('[21] 跟随软件语言 / 手动切换');
+  {
+    // 宿主语言 = 英文，插件语言设为 auto → 界面应为英文
+    const seed = {
+      version: 6,
+      settings: { lang: 'auto', taskProject: 'Milestones', hero: true },
+      events: [{ id: 'l1', title: 'Mom birthday', kind: 'birthday', calendar: 'solar',
+        date: '1990-05-12', repeat: true, color: '#d6336c', note: '' }]
+    };
+    const hooks = {};
+    const saves = [];
+    const dom3 = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(w3) {
+        w3.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w3.PluginAPI = {
+          cfg: { lang: 'en' },
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook(k, fn) { hooks[k] = fn; },
+          showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(JSON.stringify(seed)); },
+          persistDataSynced(s) { saves.push(s); return Promise.resolve(); },
+          openDialog() { return Promise.resolve('Cancel'); }
+        };
+      }
+    });
+    const d3 = dom3.window.document;
+    const $3 = (s) => d3.querySelector(s);
+    await new Promise((r) => setTimeout(r, 300));
+
+    eq($3('.cd-title').textContent, 'Milestones', '标题跟随软件语言（英文）');
+    eq($3('.cd-chip[data-f="all"]').textContent, 'All', '筛选条为英文');
+    ok($3('.cd-sub').textContent.indexOf('1 entry') === 0, '副标题用英文单数：' + $3('.cd-sub').textContent);
+    ok($3('.cd-hero-label').textContent.indexOf('in') !== -1, '置顶卡片文案为英文');
+    ok($3('.cd-item-num i').textContent === 'days left' || $3('.cd-item-num i').textContent === 'today',
+      '天数单位英文化');
+    eq($3('.cd-tag').textContent, 'Birthday', '类型标签英文化');
+
+    // 在插件里手动选中文：界面切换 + 写入同步数据
+    $3('#cdSettings').click();
+    await new Promise((r) => setTimeout(r, 420));
+    ok(!!$3('#sLang button[data-v="zh"]'), '语言列表按已注册语言包生成');
+    $3('#sLang button[data-v="zh"]').click();
+    await new Promise((r) => setTimeout(r, 240));
+    eq($3('.cd-title').textContent, '里程碑', '手动选中文后界面切中文');
+    eq($3('.cd-sub').textContent[0], '1', '副标题回到中文计数');
+    ok(JSON.parse(saves[saves.length - 1]).settings.lang === 'zh', '语言偏好写入同步数据');
+
+    // 软件里切成英文（languageChange）→ 偏好是 zh，不应被覆盖
+    hooks.languageChange && hooks.languageChange({ newLanguage: 'en' });
+    await new Promise((r) => setTimeout(r, 120));
+    eq($3('.cd-title').textContent, '里程碑', '显式选定语言时不跟随软件语言');
+
+    // 切回自动 → 立刻跟随软件语言（英文）
+    $3('#sLang button[data-v="auto"]').click();
+    await new Promise((r) => setTimeout(r, 240));
+    eq($3('.cd-title').textContent, 'Milestones', '自动模式下跟随软件语言');
+    eq(JSON.parse(saves[saves.length - 1]).settings.lang, 'auto', '自动模式写回 auto');
+    dom3.window.close();
+  }
+
+  console.log('[22] 无运行时错误');
   eq(errors.length, 0, '控制台无报错' + (errors.length ? '：\n     ' + errors.join('\n     ') : ''));
 
   console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);

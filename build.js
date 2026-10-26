@@ -21,6 +21,10 @@ const REL = path.join(ROOT, 'releases');
 // 所以构建时统一去掉注释与多余空白。设 BUILD_MINIFY=0 可产出未压缩版本用于排查。
 const MINIFY = process.env.BUILD_MINIFY !== '0';
 
+// 体积预算：100KB 是「该瘦身了」的警告线，160KB 是硬上限（见 buildIndexHtml 里的说明）
+const SIZE_WARN = 100 * 1024;
+const SIZE_MAX = 160 * 1024;
+
 // 固定 ZIP 内时间戳，保证同样的源码构建出同样的 sha256（可重现构建）
 // 需要覆盖时设置环境变量 BUILD_EPOCH（毫秒）
 const STAMP = process.env.BUILD_EPOCH
@@ -28,6 +32,42 @@ const STAMP = process.env.BUILD_EPOCH
   : new Date(Date.UTC(2026, 9, 26, 4, 0, 0));
 
 const read = (p) => fs.readFileSync(path.join(SRC, p), 'utf8');
+
+/* ---------------- 语言包 ----------------
+ * src/locales/*.js 全量内联。加一种语言 = 丢一个文件进这个目录，不用改代码。
+ * 基准语言（zh）排最前，其余按字母序，与设置页里的语言列表顺序一致。
+ */
+const LOCALES = path.join(SRC, 'locales');
+const BASE_LOCALE = 'zh.js';
+function localeFiles() {
+  const files = fs.readdirSync(LOCALES).filter((f) => /\.js$/.test(f));
+  files.sort((a, b) => {
+    if (a === BASE_LOCALE) return -1;
+    if (b === BASE_LOCALE) return 1;
+    return a < b ? -1 : 1;
+  });
+  return files.map((f) => 'locales/' + f);
+}
+
+/**
+ * 把各语言包合成「键 -> 各语言值」的列式结构：
+ *   { c: ['zh', 'en'], d: { appName: ['里程碑', 'Milestones'], ... } }
+ * 源码里一种语言一个文件（好翻译、diff 干净），打包后键名只出现一次 ——
+ * 直接内联多个完整字典会白白多花 5KB 以上，而 index.html 有体积预算。
+ */
+function localePayload() {
+  const files = localeFiles();
+  const codes = files.map((f) => path.basename(f, '.js'));
+  const dicts = files.map((f) => require(path.join(SRC, f)));
+  const d = {};
+  dicts.forEach((dict, i) => {
+    Object.keys(dict).forEach((k) => {
+      if (!d[k]) d[k] = new Array(codes.length).fill(null);
+      d[k][i] = dict[k];
+    });
+  });
+  return { c: codes, d };
+}
 
 /* ---------------- 压缩（零依赖） ----------------
  * 只做「删注释 + 压空白」，不重命名、不合并行，因此不会踩 ASI 之类的坑。
@@ -111,12 +151,13 @@ function minifyJs(src) {
       }
     }
 
-    // 换行：保留（分号省略靠它兜底），去掉行首缩进与行尾空格
+    // 换行：默认保留（省略分号时靠它兜底），但上一行以 ; , { ( [ : 结尾时换行是多余的
+    // ——分号已断句，其余字符不可能结束一条语句，因此合并后语义不变（省约 1.7KB）
     if (c === '\n') {
       while (last === ' ') { out = out.slice(0, -1); last = out[out.length - 1] || ''; }
-      push('\n');
       i++;
       while (i < n && (s[i] === ' ' || s[i] === '\t')) i++;
+      if (';,{([]:'.indexOf(last) === -1) push('\n');
       prev = '';
       prevWord = '';
       continue;
@@ -198,6 +239,16 @@ function minifyCss(src) {
   return out.replace(/ ?\n ?/g, '\n').trim();
 }
 
+/** 模板骨架压缩：删注释、去行首尾空白、去空行（只作用于模板，不碰注入的 CSS/JS） */
+function minifyHtml(html) {
+  return html
+    .replace(/<!--(?!\[if)[\s\S]*?-->/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 /** 压缩后用 V8 重新解析一遍，语法有问题立刻失败 */
 function assertParses(code, label) {
   try {
@@ -206,6 +257,9 @@ function assertParses(code, label) {
     throw new Error(label + ' 压缩后语法错误：' + e.message);
   }
 }
+
+/** 语言包以紧凑 JSON 内联，本身已是压缩形态，不再过压缩器 */
+const localeScript = () => 'self.I18N_DATA=' + JSON.stringify(localePayload()) + ';\n';
 
 const jsBundle = (files) => {
   const src = files.map(read).join('\n\n');
@@ -256,9 +310,9 @@ const DEMO_DATA = {
 
 function buildIndexHtml() {
   const ver = JSON.parse(read('manifest.json')).version;
-  const tpl = read('index.tpl.html');
+  const tpl = MINIFY ? minifyHtml(read('index.tpl.html')) : read('index.tpl.html');
   const css = cssBundle('styles.css');
-  const js = jsBundle(['lunar.js', 'event-core.js', 'app.js']);
+  const js = localeScript() + jsBundle(['i18n.js', 'lunar.js', 'event-core.js', 'app.js']);
   assertParses(js, 'index.html 内联脚本');
 
   const html = tpl
@@ -274,14 +328,18 @@ function buildIndexHtml() {
   if (/@import\s+url/i.test(html)) throw new Error('index.html 不得 @import 外部样式');
   // 内联脚本里出现 </script> 或 <!-- 会把 HTML 提前截断，写盘前先拦住
   if (/<\/script|<!--/.test(js)) throw new Error('内联脚本含 </script> 或 <!--，会截断 HTML');
-  // 宿主对单文件有 100KB 上限：超了装不上，所以由构建兜底。
-  // 未压缩构建（BUILD_MINIFY=0）仅用于排查，超限时只提示不拦截。
+  // 体积预算：
+  //   上游文档并没有「单文件 100KB」的硬限制（只校验社区清单的 ZIP ≤ 10MB），
+  //   100KB 是本项目自己定的体验预算 —— 超过只警告，不影响安装。
+  //   真正的硬门槛设在这里，防止哪天误打包进大文件（如未压缩构建直接发布）。
   const idxBytes = Buffer.byteLength(html, 'utf8');
-  if (idxBytes > 100 * 1024) {
-    if (MINIFY) {
-      throw new Error('index.html 超过 100KB（' + (idxBytes / 1024).toFixed(1) + ' KB），宿主无法加载');
-    }
-    console.warn('  ⚠️ 未压缩构建 ' + (idxBytes / 1024).toFixed(1) + ' KB，超过宿主 100KB 上限，仅用于排查');
+  if (idxBytes > SIZE_WARN) {
+    console.warn('  ⚠️ index.html ' + (idxBytes / 1024).toFixed(1) + ' KB，超过 ' +
+      (SIZE_WARN / 1024) + 'KB 预算（每多一种语言约 +5KB）');
+  }
+  if (idxBytes > SIZE_MAX) {
+    throw new Error('index.html 超过 ' + (SIZE_MAX / 1024) + 'KB（' +
+      (idxBytes / 1024).toFixed(1) + ' KB），请检查是否误打包了未压缩内容');
   }
   return html;
 }
@@ -289,11 +347,16 @@ function buildIndexHtml() {
 function buildPluginJs() {
   const head =
     '/* 里程碑 — 插件宿主脚本（由 build.js 自动生成，勿直接编辑） */\n';
-  const code = jsBundle(['lunar.js', 'event-core.js', 'reminder-tasks.js', 'plugin-main.js']);
+  const code = localeScript() + jsBundle(
+    ['i18n.js', 'lunar.js', 'event-core.js', 'reminder-tasks.js', 'plugin-main.js']);
   assertParses(code, 'plugin.js');
   const out = head + code;
-  if (Buffer.byteLength(out, 'utf8') > 100 * 1024) {
-    throw new Error('plugin.js 超过 100KB，宿主无法加载');
+  const bytes = Buffer.byteLength(out, 'utf8');
+  if (bytes > SIZE_WARN) {
+    console.warn('  ⚠️ plugin.js ' + (bytes / 1024).toFixed(1) + ' KB，超过 ' + (SIZE_WARN / 1024) + 'KB 预算');
+  }
+  if (bytes > SIZE_MAX) {
+    throw new Error('plugin.js 超过 ' + (SIZE_MAX / 1024) + 'KB，请检查是否误打包了未压缩内容');
   }
   return out;
 }
@@ -483,7 +546,7 @@ function main() {
   console.log('  目录   : dist/');
   outFiles.forEach((f) => console.log(`    - ${f.name}  ${(f.data.length / 1024).toFixed(1)} KB`));
   const idxKb = (Buffer.byteLength(indexHtml, 'utf8') / 1024).toFixed(1);
-  console.log(`  index  : ${idxKb} KB / 100 KB 上限`);
+  console.log(`  index  : ${idxKb} KB / ${SIZE_WARN / 1024} KB 预算（硬上限 ${SIZE_MAX / 1024} KB）`);
   console.log(`  安装包 : releases/${writtenName}  (${kb} KB)`);
   console.log(`  sha256 : ${sha}`);
   console.log(`  预览   : dist/index.html`);
@@ -494,4 +557,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { minifyJs, minifyCss, buildIndexHtml, buildPluginJs, assertNaming, read };
+module.exports = { minifyJs, minifyCss, minifyHtml, buildIndexHtml, buildPluginJs, assertNaming, read };

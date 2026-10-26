@@ -252,7 +252,7 @@ const oldShape = Core.normalize({
 eq(oldShape.events[0].remind.task, true, '旧 on 被忽略，按缺省加入任务列表');
 eq(oldShape.events[0].remind.snack, false, '旧 on 不会打开提示条');
 eq(oldShape.events[0].remind.offsets.join(','), '0,3', '合法档位仍被保留');
-eq(Object.keys(oldShape.settings).sort().join(','), 'hero,strikeExpired,taskProject', 'settings 只有项目名与两个显示开关');
+eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,strikeExpired,taskProject', 'settings 只有语言、项目名与两个显示开关');
 eq(oldShape.settings.hero, true, '缺省开启置顶卡片');
 eq(oldShape.settings.strikeExpired, true, '缺省给过期倒数日加删除线');
 eq(Core.normalize({ settings: { strikeExpired: false } }).settings.strikeExpired, false, '删除线开关可关闭');

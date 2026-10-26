@@ -1,18 +1,23 @@
 /*!
- * 日子核心逻辑：数据模型 + 下一次发生时间推算
- * 依赖 Lunar（农历换算）
+ * 事项核心逻辑：数据模型 + 下一次发生时间推算
+ * 依赖 Lunar（农历换算）与 I18N（文案表）
  */
 (function (global, factory) {
   if (typeof module === 'object' && typeof module.exports === 'object') {
-    module.exports = factory(require('./lunar.js'));
+    module.exports = factory(require('./lunar.js'), require('./i18n.js'));
   } else {
-    global.EventCore = factory(global.Lunar);
+    global.EventCore = factory(global.Lunar, global.I18N);
   }
-})(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : this, function (Lunar) {
+})(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : this, function (Lunar, I18N) {
   'use strict';
+
+  var I = I18N;
+  var lang = 'zh';
 
   var DAY_MS = 86400000;
   var WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  var MONTH_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   var YMD_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
   var HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
@@ -75,6 +80,35 @@
 
   var FESTIVAL_GROUPS = { solar: '公历', lunar: '农历', term: '节气' };
 
+  /**
+   * 切换文案语言。
+   * 做法是就地改写 KINDS / WEEK / TERMS / FESTIVALS 里的字符串，
+   * 因此所有 `Core.KINDS[kind]` 形式的调用点无需改动。
+   * @param {'zh'|'en'} l
+   */
+  function setLang(l) {
+    lang = l === 'en' ? 'en' : 'zh';
+    // 文案表与农历模块各自也持有语言状态，一起切
+    if (I && typeof I.setLang === 'function') I.setLang(lang);
+    if (Lunar && typeof Lunar.setLang === 'function') Lunar.setLang(lang);
+
+    var kinds = ['birthday', 'anniversary', 'countdown', 'festival'];
+    for (var i = 0; i < kinds.length; i++) KINDS[kinds[i]] = I.t('kind.' + kinds[i]);
+    for (var w = 0; w < WEEK.length; w++) WEEK[w] = I.t('week.' + w);
+
+    TERMS.qingming.name = I.t('term.qingming');
+    FESTIVAL_GROUPS.solar = I.t('group.solar');
+    FESTIVAL_GROUPS.lunar = I.t('group.lunar');
+    FESTIVAL_GROUPS.term = I.t('group.term');
+    for (var f = 0; f < FESTIVALS.length; f++) {
+      FESTIVALS[f].name = I.t('fest.' + FESTIVALS[f].key);
+    }
+  }
+
+  function getLang() {
+    return lang;
+  }
+
   var FESTIVAL_MAP = null;
   function festivalByKey(key) {
     if (!FESTIVAL_MAP) {
@@ -121,6 +155,9 @@
   }
 
   function cnDate(d) {
+    if (lang === 'en') {
+      return MONTH_EN[d.getMonth()] + ' ' + d.getDate() + ', ' + WEEK[d.getDay()];
+    }
     return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + WEEK[d.getDay()];
   }
 
@@ -138,7 +175,7 @@
   var REMIND_OFFSETS = [0, 1, 3, 7, 30];
 
   /**
-   * 提醒渠道是「每个日子各自选择」的，不是一个全局总开关：
+   * 提醒渠道是「每个事项各自选择」的，不是一个全局总开关：
    *   task  = true → 在任务列表里生成一条任务（关闭即删除该任务）
    *   snack = true → 打开应用时若到点，弹一条提示条
    * 两个渠道可以同时开，也可以只开一个。
@@ -149,12 +186,14 @@
 
   function emptySettings() {
     return {
-      // 任务归属的项目名
-      taskProject: '里程碑提醒',
+      // 任务归属的项目名（默认名跟随界面语言，之后按用户实际数据走）
+      taskProject: I.t('projectDefault'),
       // 顶部是否放大显示当前分区的第一条
       hero: true,
       // 倒数日过期后，名称是否加删除线
-      strikeExpired: true
+      strikeExpired: true,
+      // 语言偏好：auto 跟随系统，或强制 zh / en
+      lang: 'auto'
     };
   }
 
@@ -174,6 +213,8 @@
       }
       data.settings.hero = s.hero !== false;
       data.settings.strikeExpired = s.strikeExpired !== false;
+      // 语言：只认 auto / zh / en，其余一律回到 auto（跟随系统）
+      data.settings.lang = s.lang === 'en' || s.lang === 'zh' ? s.lang : 'auto';
     }
 
     var list = Array.isArray(raw.events) ? raw.events : [];
@@ -437,13 +478,13 @@
   function titleOf(ev, age) {
     var base = ev.title || KINDS[ev.kind];
     if (ev.kind === 'birthday' && age !== null && age !== undefined && age >= 0) {
-      return base + '（' + age + '岁）';
+      return base + I.t('age.suffix', { n: age });
     }
     return base;
   }
 
   /**
-   * 这个日子此刻是否有任何提醒（归档 = 静音）
+   * 这个事项此刻是否有任何提醒（归档 = 静音）
    * 仅用于界面显示小铃铛，与调度逻辑保持同一判断
    */
   function hasReminder(ev) {
@@ -514,7 +555,7 @@
       return (s ? ymd(s) + ' · ' : '') + Lunar.lunarText(ev.lunar.month, ev.lunar.day, ev.lunar.isLeap);
     }
     var b = parseYMD(ev.date);
-    if (!b) return '日期未设置';
+    if (!b) return I.t('date.notSet');
     var l = Lunar.solarToLunar(b);
     return ymd(b) + ' · ' + Lunar.lunarText(l.month, l.day, l.isLeap);
   }
@@ -564,7 +605,7 @@
   /** 生肖/干支说明，仅农历生日有意义 */
   function zodiacLabel(ev) {
     if (ev.calendar !== 'lunar' || !ev.lunar) return '';
-    return Lunar.ganzhiOf(ev.lunar.year) + '年 · 属' + Lunar.zodiacOf(ev.lunar.year);
+    return I.t('zodiac.label', { gz: Lunar.ganzhiOf(ev.lunar.year), z: Lunar.zodiacOf(ev.lunar.year) });
   }
 
   /** 今天是否有事（用于启动提醒） */
@@ -585,6 +626,8 @@
     FESTIVALS: FESTIVALS,
     FESTIVAL_GROUPS: FESTIVAL_GROUPS,
     TERMS: TERMS,
+    setLang: setLang,
+    getLang: getLang,
     festivalByKey: festivalByKey,
     festivalFields: festivalFields,
     termDate: termDate,
