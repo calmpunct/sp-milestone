@@ -266,7 +266,7 @@ npm run demo       # open the preview page in a browser
 
 **About size**: `index.html` must be self-contained (styles and scripts inlined — the mobile client loads it as a whole document in a native WebView, with no module channel available), so the build strips comments, collapses whitespace in the inlined CSS / JS and trims the HTML skeleton: no identifier renaming, no risky line joining (a newline is only dropped after `; , { ( [ :`, where it can never be an ASI boundary), and the result is re-parsed by V8 before it is written.
 
-Language packs stay one file per language in `src/locales/`, but the build merges them into a single "key → per-language values" payload so a key name is stored once. Splitting them out cost only ~0.4 KB, which is why the per-file layout was kept. Current build: `index.html` 99.5 KB, `plugin.js` 56.4 KB, ZIP 48.5 KB; each additional language costs roughly 5 KB. The build warns above 100 KB and hard-fails above 160 KB — the upstream docs define no per-file limit (only a 10 MB ZIP cap for the community listing), so 100 KB is a self-imposed budget, not a host limit. `BUILD_MINIFY=0 npm run build` produces a readable build for debugging.
+Language packs stay one file per language in `src/locales/`, but the build merges them into a single "key → per-language values" payload so a key name is stored once. Splitting them out cost only ~0.4 KB, which is why the per-file layout was kept. Current build: `index.html` 97.4 KB, `plugin.js` 55.1 KB, ZIP 48.2 KB; each additional language costs roughly 5 KB. The build warns above 100 KB and hard-fails above 160 KB — the upstream docs define no per-file limit (only a 10 MB ZIP cap for the community listing), so 100 KB is a self-imposed budget, not a host limit. `BUILD_MINIFY=0 npm run build` produces a readable build for debugging.
 
 Source layout:
 
@@ -598,7 +598,7 @@ npm run demo       # 在浏览器中打开预览页
 
 **关于体积**：`index.html` 必须是自包含文档（样式与脚本都内联，不能 `<script src>`——移动端是原生 WebView 整页加载，没有可用的模块通道），所以构建时会对内联的 CSS / JS 做「删注释 + 压空白」，并顺带压缩 HTML 骨架：不改标识符；换行只在 `; , { ( [ :` 之后才合并（这些位置不可能是 ASI 边界），写盘前再用 V8 重新解析校验。
 
-语言包仍然一种语言一个文件（`src/locales/`），但构建时会被合成「键 → 各语言值」的列式结构，键名只存一份。实测拆成独立文件只比合成单表多 0.4KB，所以保留了这种更好贡献的结构。当前产物：`index.html` 99.5 KB、`plugin.js` 56.4 KB、安装包 48.5 KB；每多一种语言约 +5KB。2.7.0 起构建在超过 100KB 时警告、超过 160KB 时失败——上游文档并没有单文件 100KB 的限制（只有社区清单 10MB 的 ZIP 上限），所以 100KB 是本项目的体验预算，不是宿主硬限。排查线上问题时想要可读版本：`BUILD_MINIFY=0 npm run build`。
+语言包仍然一种语言一个文件（`src/locales/`），但构建时会被合成「键 → 各语言值」的列式结构，键名只存一份。实测拆成独立文件只比合成单表多 0.4KB，所以保留了这种更好贡献的结构。当前产物：`index.html` 97.4 KB、`plugin.js` 55.1 KB、安装包 48.2 KB；每多一种语言约 +5KB。2.7.0 起构建在超过 100KB 时警告、超过 160KB 时失败——上游文档并没有单文件 100KB 的限制（只有社区清单 10MB 的 ZIP 上限），所以 100KB 是本项目的体验预算，不是宿主硬限。排查线上问题时想要可读版本：`BUILD_MINIFY=0 npm run build`。
 
 源码结构：
 

@@ -148,7 +148,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     await wait(150);
     const rows = taskList(host);
     eq(rows.length, 1, '生成 1 条任务');
-    eq(rows[0].title, '🎂 妈妈生日（55岁）', '标题带图标与年龄');
+    eq(rows[0].title, '🎂 妈妈生日（56岁）', '标题带图标与年龄');
     ok(!!rows[0].projectId, '归入项目');
     eq(Object.keys(host.projects).length, 1, '只建 1 个项目');
     eq(Object.keys(host.projects).map((k) => host.projects[k].title)[0], '纪念日提醒', '项目名');

@@ -148,8 +148,35 @@ eq(Core.titleOf(kid, Core.ageOn(kid, TODAY)), '小米（6岁）', '名称带年�
 const onDay = mk({ title: '当天', date: '2019-10-26' });
 eq(Core.ageOn(onDay, TODAY), 7, '生日当天即为新年龄');
 
+// 16.1 括号里的年龄 = 这次生日（下次发生那天）多少岁
+console.log('[7.0] 这次生日多少岁');
+const momOcc = Core.nextOccurrence(mom, TODAY);
+eq(Core.ageAt(mom, momOcc, TODAY), 56, '生日已过：今天 55，这次过 56');
+eq(Core.titleOf(mom, Core.ageAt(mom, momOcc, TODAY)), '我妈生日（56岁）', '名称用这次生日的年龄');
+
+const kidOcc = Core.nextOccurrence(kid, TODAY);
+eq(Core.ageAt(kid, kidOcc, TODAY), 7, '生日未到：今天 6，这次过 7');
+eq(Core.titleOf(kid, Core.ageAt(kid, kidOcc, TODAY)), '小米（7岁）', '名称用这次生日的年龄（未到生日）');
+
+eq(Core.ageAt(onDay, Core.nextOccurrence(onDay, TODAY), TODAY), 7, '生日当天：今天多大就过多少岁');
+eq(Core.ageAt(mk({ date: '2000-02-29' }), Core.nextOccurrence(mk({ date: '2000-02-29' }), TODAY), TODAY), 27,
+  '闰日生日在平年也长一岁');
+const unborn = mk({ date: '2030-01-01' });
+eq(Core.ageAt(unborn, Core.nextOccurrence(unborn, TODAY), TODAY), null, '还没出生不算年龄');
+eq(Core.ageAt(lunarEv, Core.nextOccurrence(lunarEv, TODAY), TODAY), 37, '农历生日按农历年差算');
+eq(Core.ageAt(mom, null, TODAY), null, '没有发生日就不给年龄');
+
+// 16.2 生日标签显示「这次生日」的日期，而不是出生那天
+console.log('[7.0] 生日标签用发生日');
+ok(Core.dateLabel(mom, momOcc).indexOf('2027-05-14') === 0, '生日标签 = 下次生日日期');
+ok(Core.dateLabel(kid, kidOcc).indexOf(Core.ymd(kidOcc.date)) === 0, '今年内的生日同样用发生日');
+ok(Core.dateLabel(lunarEv, Core.nextOccurrence(lunarEv, TODAY)).indexOf(Core.ymd(Core.nextOccurrence(lunarEv, TODAY).date)) === 0,
+  '农历生日也用发生日');
+ok(Core.dateLabel(mom).indexOf('1971-05-14') === 0, '没给发生日时回落到原始日期');
+
 const ann = mk({ title: '结婚纪念日', kind: 'anniversary', date: '2018-06-16' });
 eq(Core.titleOf(ann, 8), '结婚纪念日', '纪念日名称不加年龄');
+ok(Core.dateLabel(ann, Core.nextOccurrence(ann, TODAY)).indexOf('2018-06-16') === 0, '纪念日仍显示起始日');
 
 // 农历生日年龄
 eq(Core.ageOn(lunarEv, TODAY), 36, '农历生日年龄（1990 年生）');

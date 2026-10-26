@@ -34,7 +34,7 @@ function task(o) {
 console.log('[1] 期望任务');
 const mom = mk({ id: 'e1', title: '妈妈生日' });
 const d1 = RT.desiredTask(mom, TODAY);
-eq(d1.title, '🎂 妈妈生日（55岁）', '标题带类型图标与年龄');
+eq(d1.title, '🎂 妈妈生日（56岁）', '标题带类型图标与年龄');
 eq(d1.dueDay, '2027-05-11', '到期日 = 事件日 - 最近的提醒档位（提前 3 天）');
 eq(d1.offset, 3, '选中的是提前 3 天档位');
 eq(d1.cycle, '2027-05-14', '周期记的是事件发生日');
@@ -84,7 +84,7 @@ eq(p.remove.length, 0, '无删除');
 
 console.log('[4] 对账：改名与改期');
 let existing = [
-  task({ id: 't1', title: '🎂 妈妈生日（55岁）', notes: d1.notes, dueDay: d1.dueDay, created: 1 })
+  task({ id: 't1', title: '🎂 妈妈生日（56岁）', notes: d1.notes, dueDay: d1.dueDay, created: 1 })
 ];
 p = RT.plan({ events: [mom], existing: existing, today: TODAY });
 eq(p.add.length + p.update.length + p.remove.length, 0, '完全一致时零操作');
@@ -92,7 +92,7 @@ eq(p.add.length + p.update.length + p.remove.length, 0, '完全一致时零操�
 const renamed = mk({ id: 'e1', title: '妈妈生日（农历）' });
 p = RT.plan({ events: [renamed], existing: existing, today: TODAY });
 eq(p.update.length, 1, '改名触发更新');
-eq(p.update[0].patch.title, '🎂 妈妈生日（农历）（55岁）'.replace('（农历）', '（农历）'), '标题同步');
+eq(p.update[0].patch.title, '🎂 妈妈生日（农历）（56岁）'.replace('（农历）', '（农历）'), '标题同步');
 
 const moved = mk({ id: 'e1', title: '妈妈生日', date: '1971-05-20' });
 p = RT.plan({ events: [moved], existing: existing, today: TODAY });

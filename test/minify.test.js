@@ -95,17 +95,23 @@ try {
 }
 
 console.log('[2] 字符串 / 模板串 / 正则未被误伤');
-eq(build.minifyJs("var s = 'a // b /* c */ d';"), "var s = 'a // b /* c */ d';", '字符串里的注释符');
-eq(build.minifyJs('var s = "http://x/*y*/";'), 'var s = "http://x/*y*/";', '字符串里的 URL');
-eq(build.minifyJs('var t = `x ${a} // y`;'), 'var t = `x ${a} // y`;', '模板串内容');
-eq(build.minifyJs('var r = /a\\/b[/]/g;'), 'var r = /a\\/b[/]/g;', '正则里的转义与字符类');
-eq(build.minifyJs('var d = a / b / c;'), 'var d = a / b / c;', '除号不被当正则');
-eq(build.minifyJs('var x = 1; /* c */ var y = 2;'), 'var x = 1; var y = 2;', '块注释删除（原位留一个空格）');
-eq(build.minifyJs('var a = 1; // tail\nvar b = 2;'), 'var a = 1;var b = 2;', '行注释删除（分号后的换行也是多余的）');
+// 压缩会把 `x = y` 的等号两侧空白去掉，所以期望值按压缩后的形态写；
+// 关键断言是引号/正则内部**一个字符都没动**
+eq(build.minifyJs("var s = 'a // b /* c */ d';"), "var s='a // b /* c */ d';", '字符串里的注释符');
+eq(build.minifyJs('var s = "http://x/*y*/";'), 'var s="http://x/*y*/";', '字符串里的 URL');
+eq(build.minifyJs('var t = `x ${a} // y`;'), 'var t=`x ${a} // y`;', '模板串内容');
+eq(build.minifyJs('var r = /a\\/b[/]/g;'), 'var r=/a\\/b[/]/g;', '正则里的转义与字符类');
+eq(build.minifyJs('var d = a / b / c;'), 'var d=a / b / c;', '除号不被当正则');
+eq(build.minifyJs('var x = 1; /* c */ var y = 2;'), 'var x=1; var y=2;', '块注释删除（原位留一个空格）');
+eq(build.minifyJs('var a = 1; // tail\nvar b = 2;'), 'var a=1;var b=2;', '行注释删除（分号后的换行也是多余的）');
 eq(build.minifyJs('var a=1;\n\n\n   var b=2;'), 'var a=1;var b=2;', '空行与缩进');
 eq(build.minifyJs('a /*c*/ b'), 'a b', '注释两侧留空格（不粘词）');
-eq(build.minifyJs('function f() {\n  return\n  1\n}\nvar g = 2'), 'function f() {return\n1\n}\nvar g = 2', 'return / } 之后的换行必须保留（ASI）');
-eq(build.minifyJs('x = {a: 1,\nb: 2}'), 'x = {a: 1,b: 2}', '逗号后的换行可丢');
+eq(build.minifyJs('function f() {\n  return\n  1\n}\nvar g = 2'), 'function f(){return\n1\n}\nvar g=2', 'return / } 之后的换行必须保留（ASI）');
+eq(build.minifyJs('if (a) {\n  b();\n} else {\n  c();\n}'), 'if(a){b();}else{c();}', '关键字括号与花括号间的空白可省');
+eq(build.minifyJs('function (a) { return a; }'), 'function(a){return a;}', 'function 后的空格可省（仍不粘词）');
+eq(build.minifyJs('var s = "if (x) {";'), 'var s="if (x) {";', '省空格的规则不碰字符串内容');
+eq(build.minifyJs('x = {a: 1,\nb: 2}'), 'x={a: 1,b: 2}', '逗号后的换行可丢');
+eq(build.minifyJs('a === b && c !== d'), 'a===b && c!==d', '等号两侧空白可省（&& 两侧保留，避免粘成 a===b&&c）');
 
 console.log('[3] 公历 → 农历（1900-2100 抽样 1984 天）');
 let n = 0;

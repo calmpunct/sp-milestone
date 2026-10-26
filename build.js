@@ -81,6 +81,11 @@ const isWordChar = (c) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
 
 const REGEX_ALLOWED_AFTER_WORD = /^(?:return|typeof|case|in|of|new|delete|void|do|else|instanceof|yield|await)$/;
 
+// 这些关键字后跟 ( 时中间的空白可以省：`if (` -> `if(`（关键字本身即分隔符，无 ASI 风险）
+const NO_SPACE_BEFORE_PAREN = /^(?:function|if|for|while|switch|catch)$/;
+// 这些关键字后跟 { 时同理：`else {` -> `else{`
+const NO_SPACE_BEFORE_BRACE = /^(?:else|do|try|finally)$/;
+
 function minifyJs(src) {
   const s = src.replace(/\r\n/g, '\n');
   const n = s.length;
@@ -166,6 +171,23 @@ function minifyJs(src) {
     // 行内空白压成一个
     if (c === ' ' || c === '\t') {
       while (i < n && (s[i] === ' ' || s[i] === '\t')) i++;
+      // 块边界的空白纯属排版，去掉不影响语义（约省 1KB）：
+      //   `if (`    -> `if(`     关键字后紧跟括号，关键字自身已起分隔作用
+      //   `else {`  -> `else{`   同上，作用于花括号
+      //   `) {`     -> `){`      右括号后紧跟左花括号
+      //   `{ return`->`{return`  左花括号后紧跟标识符
+      //   `; }`     -> `;}`      分号后紧跟右花括号
+      //   `} else`  -> `}else`   右花括号后紧跟标识符（} 是标点，不会粘连）
+      //   `a === b` -> `a===b`   等号两侧（等号本身即分隔符）
+      const nx = s[i];
+      if (nx === '(' && NO_SPACE_BEFORE_PAREN.test(prevWord)) { prevWord = ''; continue; }
+      if (nx === '{' && (last === ')' || NO_SPACE_BEFORE_BRACE.test(prevWord))) { prevWord = ''; continue; }
+      if (nx === '}' && last === ';') { prevWord = ''; continue; }
+      if (nx !== undefined && isWordChar(nx) && (last === '{' || last === '}')) { prevWord = ''; continue; }
+      // 等号两侧：`a === b` -> `a===b`、`c !== d` -> `c!==d`（> 留箭头函数，单独的 ! 留逻辑非）
+      if (last === '=' && nx !== '=' && nx !== '>') { prevWord = ''; continue; }
+      const isEq = nx === '=' || (nx === '!' && s[i + 1] === '=');
+      if (isEq && (isWordChar(last) || last === ')' || last === ']')) { prevWord = ''; continue; }
       if (last !== ' ' && last !== '\n' && last !== '') push(' ');
       continue;
     }
@@ -234,6 +256,9 @@ function minifyCss(src) {
     t = t.replace(/ ?([{};:>]) ?/g, '$1');
     t = t.replace(/,\s*/g, ',');
     t = t.replace(/;\}/g, '}');
+    // 数值与颜色的等价简写：0.5s -> .5s、#ffffff -> #fff
+    t = t.replace(/(^|[^\w.#])0\.(\d)/g, '$1.$2');
+    t = t.replace(/#([0-9a-f])\1([0-9a-f])\2([0-9a-f])\3(?![0-9a-f])/gi, '#$1$2$3');
     out += t;
   }
   return out.replace(/ ?\n ?/g, '\n').trim();

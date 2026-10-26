@@ -56,6 +56,7 @@
     'group.custom': "自定义",
     'term.qingming': "清明",
     'date.notSet': "日期未设置",
+    // 生日括号里的年龄 = 这次生日（下次发生那天）多少岁，不是今天多大
     'age.suffix': "（{n}岁）",
     'years.n': "{n} 周年",
     'zodiac.label': "{gz}年 · 属{z}",

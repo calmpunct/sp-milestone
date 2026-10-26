@@ -112,7 +112,7 @@
     if (!slot) return null;
 
     var t = Core.startOfDay(today);
-    var title = iconOf(ev.kind) + ' ' + Core.titleOf(ev, Core.ageOn(ev, t));
+    var title = iconOf(ev.kind) + ' ' + Core.titleOf(ev, Core.ageAt(ev, slot.occ, t));
     var typeText = Core.KINDS[ev.kind] || Core.KINDS.countdown;
     var line2 = Core.dateLabel(ev, slot.occ) + (ev.repeat ? ' · ' + I.t('remind.yearly') : '');
     var notes = [

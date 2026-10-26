@@ -463,6 +463,33 @@
   }
 
   /**
+   * 这次生日多少岁（下一次发生那天的周岁）
+   * 界面上的「（55岁）」说的是即将到来的这个生日，不是今天多大，
+   * 所以通常比 ageOn 多一岁；正好生日当天两者相等。
+   * @param {object} ev 事件
+   * @param {object} occ nextOccurrence 的结果
+   * @param {Date} [today] 基准日；给了才拦「还没出生」的记录
+   * @returns {number|null}
+   */
+  function ageAt(ev, occ, today) {
+    if (!occ || !occ.date) return null;
+
+    if (ev.calendar === 'lunar' && ev.lunar) {
+      var ly = occ.lunarYear;
+      if (!ly) ly = Lunar.solarToLunar(occ.date).year;
+      var n = ly - ev.lunar.year;
+      return n >= 0 ? n : null;
+    }
+
+    var base = parseYMD(ev.date);
+    if (!base) return null;
+    // 生日还没到（出生日期在未来）不算年龄
+    if (today && diffDays(startOfDay(today), base) > 0) return null;
+    var n2 = occ.date.getFullYear() - base.getFullYear();
+    return n2 >= 0 ? n2 : null;
+  }
+
+  /**
    * 清洗名称：去掉误写进名称里的年龄后缀
    * 年龄不进数据，只在渲染时拼接，这里做兜底防止「（55岁）（55岁）」叠加
    */
@@ -515,7 +542,7 @@
         ev: ev,
         occ: occ,
         offset: occ.days,
-        title: titleOf(ev, ageOn(ev, t))
+        title: titleOf(ev, ageAt(ev, occ, t))
       });
     });
     out.sort(function (a, b) { return a.offset - b.offset; });
@@ -544,16 +571,28 @@
     return Math.max(0, Math.min(1, done / total));
   }
 
-  /** 事件的日期描述，如「1990-05-12 · 农历四月十八」 */
+  /** 「2027-05-12 · 农历四月十一」 */
+  function solarLunarText(d) {
+    var l = Lunar.solarToLunar(d);
+    return ymd(d) + ' · ' + Lunar.lunarText(l.month, l.day, l.isLeap);
+  }
+
+  /**
+   * 事件的日期描述，如「1990-05-12 · 农历四月十八」
+   * 生日例外：列表里该显示的是「这次生日」的日期，出生那天对倒数没有意义
+   */
   function dateLabel(ev, occ) {
+    var showOcc = ev.kind === 'birthday' && occ && occ.date;
     if (ev.term && TERMS[ev.term]) {
       var td = (occ && occ.date) || termDate(ev.term, new Date().getFullYear());
       return (td ? ymd(td) + ' · ' : '') + TERMS[ev.term].name;
     }
     if (ev.calendar === 'lunar' && ev.lunar) {
+      if (showOcc) return solarLunarText(occ.date);
       var s = lunarToSolarOf(ev.lunar);
       return (s ? ymd(s) + ' · ' : '') + Lunar.lunarText(ev.lunar.month, ev.lunar.day, ev.lunar.isLeap);
     }
+    if (showOcc) return solarLunarText(occ.date);
     var b = parseYMD(ev.date);
     if (!b) return I.t('date.notSet');
     var l = Lunar.solarToLunar(b);
@@ -647,6 +686,7 @@
     lunarToSolarOf: lunarToSolarOf,
     yearsSince: yearsSince,
     ageOn: ageOn,
+    ageAt: ageAt,
     titleOf: titleOf,
     cleanTitle: cleanTitle,
     hasReminder: hasReminder,

@@ -136,7 +136,7 @@ eq(Core.FESTIVALS.filter((f) => f.key === 'zhongqiu')[0].name, 'Mid-Autumn Festi
 eq(Core.WEEK[1], 'Mon', '星期名随语言切换');
 ok(Core.dateLabel({ calendar: 'lunar', lunar: { month: 8, day: 15 }, date: '2026-09-25' }).indexOf('Lunar') !== -1,
   '农历文案切换成英文');
-eq(Core.titleOf({ title: 'Mom', kind: 'birthday' }, 55), 'Mom (55)', '年龄后缀切换成英文');
+eq(Core.titleOf({ title: 'Mom', kind: 'birthday' }, 55), 'Mom (turning 55)', '年龄后缀切换成英文');
 eq(Core.emptySettings().taskProject, 'Milestones', '默认项目名跟随语言');
 Core.setLang('zh');
 eq(Core.emptySettings().taskProject, '里程碑提醒', '默认项目名回到中文');

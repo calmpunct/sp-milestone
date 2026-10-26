@@ -57,7 +57,8 @@
     'group.custom': "Custom",
     'term.qingming': "Qingming",
     'date.notSet': "Date not set",
-    'age.suffix': " ({n})",
+    // age in the suffix = how old the person turns on the upcoming birthday, not today's age
+    'age.suffix': " (turning {n})",
     'years.n': "{n} years",
     'zodiac.label': "{gz} year · {z}",
 

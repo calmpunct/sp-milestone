@@ -317,7 +317,8 @@
         years: Core.yearsSince(ev, occ),
         metric: metricOf(ev, occ, today),
         label: Core.dateLabel(ev, occ),
-        name: Core.titleOf(ev, Core.ageOn(ev, today))
+        // 生日括号里放「这次生日多少岁」，不是今天多大
+        name: Core.titleOf(ev, Core.ageAt(ev, occ, today))
       };
     });
   }
@@ -343,7 +344,8 @@
 
   /** 名称（生日带年龄，如「我妈生日（55岁）」） */
   function nameOf(ev, today) {
-    return Core.titleOf(ev, Core.ageOn(ev, today || new Date()));
+    var t = today || new Date();
+    return Core.titleOf(ev, Core.ageAt(ev, Core.nextOccurrence(ev, t), t));
   }
 
   function renderSub(rows, archivedCount) {
