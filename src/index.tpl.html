@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="cd-version" content="__CD_VERSION__">
+<title>里程碑</title>
+<style>
+/*INJECT_STYLES*/
+</style>
+</head>
+<body>
+
+<div class="cd-app">
+  <header class="cd-topbar">
+    <div>
+      <h1 class="cd-title">里程碑</h1>
+      <p class="cd-sub" id="cdSub">正在加载…</p>
+    </div>
+    <div class="cd-actions">
+      <button class="cd-icon-btn" id="cdSettings" type="button" aria-label="设置" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3.2"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+      <button class="cd-add" id="cdAdd" type="button" aria-label="添加日子">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        添加
+      </button>
+    </div>
+  </header>
+
+  <section id="cdHero" aria-live="polite"></section>
+
+  <div class="cd-chips" id="cdChips" role="group" aria-label="筛选">
+    <button type="button" class="cd-chip" data-f="all" aria-pressed="true">全部</button>
+    <button type="button" class="cd-chip" data-f="birthday" aria-pressed="false">生日</button>
+    <button type="button" class="cd-chip" data-f="anniversary" aria-pressed="false">纪念日</button>
+    <button type="button" class="cd-chip" data-f="countdown" aria-pressed="false">倒数日</button>
+    <button type="button" class="cd-chip" data-f="archive" aria-pressed="false">归档</button>
+  </div>
+
+  <main class="cd-list" id="cdList"></main>
+</div>
+
+<div id="cdLayer" hidden>
+  <div class="cd-mask" id="cdMask"></div>
+  <div class="cd-sheet" id="cdSheet" role="dialog" aria-modal="true" aria-labelledby="cdSheetTitle">
+    <div class="cd-sheet-head">
+      <button type="button" id="cdCancel">取消</button>
+      <h2 id="cdSheetTitle">新建日子</h2>
+      <button type="button" class="cd-strong" id="cdSave">保存</button>
+    </div>
+    <div class="cd-sheet-body">
+
+      <label class="cd-field">
+        <span class="cd-label">名称</span>
+        <input class="cd-input" id="fTitle" type="text" maxlength="40" placeholder="例如：妈妈生日" autocomplete="off">
+      </label>
+
+      <div class="cd-field">
+        <span class="cd-label">类型</span>
+        <div class="cd-seg" id="fKind">
+          <button type="button" data-v="birthday">生日</button>
+          <button type="button" data-v="anniversary">纪念日</button>
+          <button type="button" data-v="countdown">倒数日</button>
+        </div>
+      </div>
+
+      <div class="cd-field">
+        <span class="cd-label">历法</span>
+        <div class="cd-seg" id="fCalendar">
+          <button type="button" data-v="solar">公历</button>
+          <button type="button" data-v="lunar">农历</button>
+        </div>
+      </div>
+
+      <label class="cd-field" id="fSolarWrap">
+        <span class="cd-label">日期</span>
+        <input class="cd-input" id="fDate" type="date">
+      </label>
+
+      <div class="cd-field" id="fLunarWrap" hidden>
+        <span class="cd-label">农历日期</span>
+        <div class="cd-lunar-row">
+          <select class="cd-select" id="fLY" aria-label="农历年"></select>
+          <select class="cd-select" id="fLM" aria-label="农历月"></select>
+          <select class="cd-select" id="fLD" aria-label="农历日"></select>
+        </div>
+        <label class="cd-check" id="fLeapWrap">
+          <input type="checkbox" id="fLeap">
+          <span>闰月</span>
+        </label>
+        <p class="cd-hint" id="fLunarPreview"></p>
+      </div>
+
+      <div class="cd-field" id="fRepeatWrap">
+        <span class="cd-label">重复</span>
+        <div class="cd-switch-row">
+          <span>每年重复</span>
+          <label class="cd-switch">
+            <input type="checkbox" id="fRepeat">
+            <i></i>
+          </label>
+        </div>
+      </div>
+
+      <div class="cd-field" id="fRemindWrap">
+        <span class="cd-label">提醒</span>
+        <div class="cd-switch-row">
+          <span>加入任务列表</span>
+          <label class="cd-switch">
+            <input type="checkbox" id="fTask">
+            <i></i>
+          </label>
+        </div>
+        <div class="cd-switch-row">
+          <span>打开应用时弹提示条</span>
+          <label class="cd-switch">
+            <input type="checkbox" id="fSnack">
+            <i></i>
+          </label>
+        </div>
+        <div class="cd-days" id="fOffsets">
+          <button type="button" data-d="0" aria-pressed="false">当天</button>
+          <button type="button" data-d="1" aria-pressed="false">提前 1 天</button>
+          <button type="button" data-d="3" aria-pressed="false">提前 3 天</button>
+          <button type="button" data-d="7" aria-pressed="false">提前 7 天</button>
+          <button type="button" data-d="30" aria-pressed="false">提前 30 天</button>
+        </div>
+        <p class="cd-hint" id="fRemindHint">两个渠道可以单独开关，也可以都关掉。</p>
+      </div>
+
+      <div class="cd-field" id="fArchiveWrap">
+        <span class="cd-label">归档</span>
+        <div class="cd-switch-row">
+          <span>移到归档分组</span>
+          <label class="cd-switch">
+            <input type="checkbox" id="fArchived">
+            <i></i>
+          </label>
+        </div>
+        <p class="cd-hint">归档适合放不重要的日子：不在「全部」里显示，也不会提醒，随时可以取消归档。</p>
+      </div>
+
+      <div class="cd-field">
+        <span class="cd-label">颜色</span>
+        <div class="cd-colors" id="fColors"></div>
+      </div>
+
+      <label class="cd-field">
+        <span class="cd-label">备注</span>
+        <textarea class="cd-textarea" id="fNote" rows="2" maxlength="200" placeholder="可选，随手记一点"></textarea>
+      </label>
+
+      <button type="button" class="cd-danger" id="cdDelete" hidden>删除这个日子</button>
+    </div>
+  </div>
+</div>
+
+<div id="cdSetLayer" hidden>
+  <div class="cd-mask" id="cdSetMask"></div>
+  <div class="cd-sheet" role="dialog" aria-modal="true" aria-labelledby="cdSetTitle">
+    <div class="cd-sheet-head">
+      <button type="button" id="cdSetClose">关闭</button>
+      <h2 id="cdSetTitle">设置</h2>
+      <span class="cd-head-spacer" aria-hidden="true"></span>
+    </div>
+    <div class="cd-sheet-body">
+
+      <div class="cd-field">
+        <span class="cd-label">置顶卡片</span>
+        <div class="cd-switch-row">
+          <span>扩大显示第一条</span>
+          <label class="cd-switch">
+            <input type="checkbox" id="sHero">
+            <i></i>
+          </label>
+        </div>
+        <p class="cd-hint">打开后顶部会放大显示<b>当前分区</b>排在最前的那一条；关掉则列表直接贴顶，一屏能多看几条。</p>
+      </div>
+
+      <div class="cd-field">
+        <span class="cd-label">说明</span>
+        <p class="cd-hint">倒数与生日显示<b>剩余天数</b>（橙黄），纪念日显示<b>已过天数</b>（蓝绿）。排序：倒数越近越靠上，已过的越久越靠上。</p>
+      </div>
+
+      <div class="cd-field">
+        <span class="cd-label">关于</span>
+        <p class="cd-hint" id="sAbout"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="cd-toast" id="cdToast" role="status" aria-live="polite"></div>
+
+<script>
+/*INJECT_SCRIPTS*/
+</script>
+</body>
+</html>
