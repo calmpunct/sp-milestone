@@ -4,7 +4,8 @@
   var L = window.Lunar;
   var Core = window.EventCore;
   var I = window.I18N;
-  var DEV_KEY = 'cd-preview-v1';
+  // 脱离宿主（直接打开 dist/index.html）调试时的本地存档键；名与项目名保持一致
+  var DEV_KEY = 'sp-milestone-local-v1';
 
   function $(s) { return document.querySelector(s); }
 

@@ -99,44 +99,6 @@ const jsBundle = (files) => files
 
 const cssBundle = (file) => banner('src/' + file) + read(file);
 
-// 预览页示例数据
-const DEMO_DATA = {
-  version: 6,
-  settings: { taskProject: '里程碑提醒', hero: true },
-  events: [
-    { id: 'd1', title: '妈妈生日', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
-      lunar: { year: 1968, month: 4, day: 18, isLeap: false }, repeat: true,
-      color: '#d6336c', note: '', createdAt: 1,
-      remind: { task: true, snack: true, offsets: [0, 1, 3] } },
-    { id: 'd2', title: '小米生日', kind: 'birthday', calendar: 'solar', date: '2019-11-08',
-      lunar: null, repeat: true, color: '#f59f00', note: '', createdAt: 2,
-      remind: { task: true, snack: false, offsets: [0, 1] } },
-    { id: 'd3', title: '结婚纪念日', kind: 'anniversary', calendar: 'solar', date: '2018-06-16',
-      lunar: null, repeat: true, color: '#c92a2a', note: '', createdAt: 3,
-      remind: { task: true, snack: true, offsets: [0, 7, 30] } },
-    { id: 'd4', title: '项目上线', kind: 'countdown', calendar: 'solar', date: '2026-12-01',
-      lunar: null, repeat: false, color: '#1c7ed6', note: '', createdAt: 4,
-      remind: { task: true, snack: true, offsets: [0, 1, 3, 7] } },
-    { id: 'd5', title: '中秋节', kind: 'festival', calendar: 'lunar', date: '2026-09-25',
-      lunar: { year: 2026, month: 8, day: 15, isLeap: false }, term: null, preset: 'zhongqiu',
-      repeat: true, color: '#7048e8', note: '', createdAt: 5,
-      remind: { task: true, snack: true, offsets: [0, 1, 7] } },
-    { id: 'd6', title: '国庆节', kind: 'festival', calendar: 'solar', date: '2026-10-01',
-      lunar: null, term: null, preset: 'guoqing', repeat: true, color: '#c92a2a',
-      note: '', createdAt: 6,
-      remind: { task: true, snack: false, offsets: [0, 1, 3] } },
-    { id: 'd7', title: '入职纪念', kind: 'anniversary', calendar: 'solar', date: '2021-03-01',
-      lunar: null, repeat: true, color: '#0ca678', note: '', createdAt: 7,
-      remind: { task: false, snack: false, offsets: [0, 1] } },
-    { id: 'd8', title: '去年年会', kind: 'countdown', calendar: 'solar', date: '2025-01-18',
-      lunar: null, repeat: false, color: '#5c7cfa', note: '', createdAt: 8,
-      remind: { task: false, snack: false, offsets: [0] } },
-    { id: 'd9', title: '大学室友生日', kind: 'birthday', calendar: 'solar', date: '1994-03-12',
-      lunar: null, repeat: true, color: '#d6336c', note: '', createdAt: 9,
-      remind: { task: false, snack: false, offsets: [0] }, archived: true }
-  ]
-};
-
 /* ---------------- 组装 ---------------- */
 
 function buildIndexHtml() {
@@ -349,25 +311,9 @@ function main() {
 
   for (const f of outFiles) fs.writeFileSync(path.join(DIST, f.name), f.data);
 
-  // 浏览器预览页（不属于插件包，仅用于本地查看效果）
-  const PREVIEW = path.join(ROOT, 'preview');
-  fs.mkdirSync(PREVIEW, { recursive: true });
-  const demoMock =
-    '<script>window.__DEMO__=' + JSON.stringify(DEMO_DATA) + ';' +
-    'window.PluginAPI={' +
-    "Hooks:{PERSISTED_DATA_CHANGED:'persistedDataChanged'}," +
-    'onReady:function(f){setTimeout(f,0)},' +
-    'registerHook:function(){},' +
-    'showIndexHtmlAsView:function(){},' +
-    'showSnack:function(c){console.log("[demo snack]",c&&c.msg)},' +
-    // 宿主 19.x 就是这样暴露语言的：cfg 里没有 lang，只有 getCurrentLanguage()
-    "getCurrentLanguage:function(){return 'zh'}," +
-    'loadSyncedData:function(){return Promise.resolve(JSON.stringify(window.__DEMO__))},' +
-    'persistDataSynced:function(s){window.__DEMO__=JSON.parse(s);return Promise.resolve()},' +
-    'openDialog:function(c){var b=c&&c.buttons||[];return Promise.resolve(b.length?b[b.length-1].label:"确定")}' +
-    '};</script>';
-  const demo = indexHtml.replace('</body>', demoMock + '\n</body>');
-  fs.writeFileSync(path.join(PREVIEW, 'demo.html'), demo, 'utf8');
+  // 提示：本地看效果直接开 dist/index.html（沙箱数据由脚本自己兜底），不再另生成预览页。
+  // 历史产物 preview/demo.html 已废弃，若目录还在就顺手清掉，避免误导。
+  fs.rmSync(path.join(ROOT, 'preview'), { recursive: true, force: true });
 
   // 安装包名用项目名（sp-milestone），不用插件 id（milestone）：
   // 社区仓库 / 下载页统一以项目名对外，id 只在宿主内部做身份标识。
@@ -397,7 +343,7 @@ function main() {
   console.log(`  index  : ${idxKb} KB（上限 ${SIZE_MAX / 1024} KB）`);
   console.log(`  安装包 : releases/${writtenName}  (${kb} KB)`);
   console.log(`  sha256 : ${sha}`);
-  console.log(`  预览   : dist/index.html`);
+  console.log(`  自检   : 直接打开 dist/index.html 即可看效果（无宿主时走 localStorage）`);
 }
 
 // 直接执行时构建；被测试 require 时只导出构建函数与常量

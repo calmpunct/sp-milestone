@@ -8,7 +8,6 @@
     "test": "node test/lunar.test.js && node test/core.test.js && node test/i18n.test.js && node build.js && node test/dom.test.js && node test/reminder-tasks.test.js && node test/reminder.test.js && node test/static.test.js",
     "test:unit": "node test/lunar.test.js && node test/core.test.js",
     "test:dom": "node build.js && node test/dom.test.js",
-    "demo": "node build.js && node preview/demo.html",
     "test:i18n": "node test/i18n.test.js"
   },
   "devDependencies": {

@@ -168,5 +168,12 @@ ok(dist.includes('/* ===== src/styles.css ===== */'), '内联样式带来源横�
 ok(inlineJs.includes('语言优先级'), '内联脚本保留源码注释');
 console.log(`     产物合计 ${(total / 1024).toFixed(1)} KB（index ${(sizes['index.html'] / 1024).toFixed(1)} KB / plugin ${(sizes['plugin.js'] / 1024).toFixed(1)} KB）`);
 
+console.log('[6] 不生成预览目录');
+// preview/demo.html 已废弃：本地看效果直接开 dist/index.html。
+// 这里钉死三条，防止构建脚本或 npm scripts 里又被加回来。
+ok(!fs.existsSync(path.join(ROOT, 'preview')), '仓库里没有 preview 目录');
+ok(!/['"]demo\.html['"]/.test(read('build.js')), 'build.js 不再写 demo.html');
+ok(!(pkg.scripts && pkg.scripts.demo), 'package.json 没有 demo 脚本');
+
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

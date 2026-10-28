@@ -7,11 +7,9 @@
   "search.exclude": {
     "node_modules/**": true,
     "dist/**": true,
-    "preview/**": true,
     "releases/**": true
   },
   "files.readonlyInclude": {
-    "dist/**": true,
-    "preview/**": true
+    "dist/**": true
   }
 }
