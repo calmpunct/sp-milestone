@@ -186,6 +186,8 @@ input, select, textarea {
 .cd-hero-num--remain { color: var(--cd-remain); }
 .cd-hero-num--elapsed { color: var(--cd-elapsed); }
 .cd-hero-num--empty { font-size: 40px; color: var(--cd-muted); }
+/* 大数字换成「今天 / 明天 / 后天」时略收字号，汉字与等宽数字的视觉重量接近 */
+.cd-hero-num--word { font-size: 50px; letter-spacing: -0.01em; font-variant-numeric: normal; }
 
 /* 分区为空：保留同等高度的占位卡，切换分类时页面不跳动 */
 .cd-hero--empty {
@@ -430,6 +432,8 @@ html[data-cd-theme='dark'] .cd-tag--muted {
 .cd-item-num--elapsed b { color: var(--cd-elapsed); }
 
 .cd-item-num b.is-txt { font-size: 17px; line-height: 1.55; letter-spacing: 0; }
+/* 「今天 / 明天 / 后天」：单行文字，字号介于数字与说明文字之间 */
+.cd-item-num b.is-word { font-size: 19px; line-height: 1.35; letter-spacing: 0.01em; }
 
 /* ============ 空状态 ============ */
 .cd-empty {

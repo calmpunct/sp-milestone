@@ -210,6 +210,28 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     ok(!second.calls.some((c) => c.op === 'add'), '没有新建');
   }
 
+  console.log('[3.1] 项目已存在时新任务仍归入该项目');
+  {
+    // 首次运行建项目后，`findProject` 命中已有项目 —— 这里必须返回项目 id，
+    // 否则 projectId 传 undefined，任务会落到收件箱
+    const e1 = ev({ id: 'p1', title: '小林生日', kind: 'birthday', date: '2020-03-03', repeat: true });
+    const first = boot(data([e1]));
+    await wait(150);
+    const projId = Object.keys(first.host.projects)[0];
+    ok(!!projId, '首次运行建了项目');
+
+    const e2 = ev({ id: 'p2', title: '老张生日', kind: 'birthday', date: '2020-04-04', repeat: true });
+    const second = boot(data([e1, e2]), {
+      host: first.host,
+      reuse: { 'cd-task-map-v1': first.w.localStorage.getItem('cd-task-map-v1') || '{}' }
+    });
+    await wait(200);
+    const added = taskList(second.host).filter((t) => t.title.indexOf('老张') !== -1);
+    eq(added.length, 1, '项目已存在于宿主时新增 1 条任务');
+    eq(added[0] && added[0].projectId, projId, '新任务的 projectId 指向已有项目（不是收件箱）');
+    eq(Object.keys(second.host.projects).length, 1, '不会重复建项目');
+  }
+
   console.log('[4] 删除事项 → 任务消失');
   {
     const e = ev({ id: 'c1', title: '项目上线', date: inDays(20), remind: { task: true, snack: false, offsets: [3] } });

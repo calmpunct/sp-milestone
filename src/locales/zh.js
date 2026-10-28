@@ -119,6 +119,11 @@
     'chip.archive': "归档",
     'chip.archiveN': "归档 {n}",
 
+    /* ---------------- 相对日期（三天内不用数字） ---------------- */
+    'when.0': "今天",
+    'when.1': "明天",
+    'when.2': "后天",
+
     /* ---------------- 副标题 ---------------- */
     'sub.archived': "{n} 个已归档 · 不参与提醒",
     'sub.archivedEmpty': "归档里还没有事项",
@@ -131,6 +136,9 @@
 
     /* ---------------- 置顶卡片 ---------------- */
     'hero.remainLabel': "距离 <b>{name}</b> 还有",
+    // 剩余 0/1/2 天：卡片上的大数字换成「今天 / 明天 / 后天」，句子也跟着改
+    'hero.todayLabel': "<b>{name}</b> 就是",
+    'hero.soonLabel': "<b>{name}</b> 就在",
     'hero.elapsedLabel': "<b>{name}</b> 已经走过",
     'hero.unitRemain': "剩余天数",
     'hero.unitElapsed': "已过天数",

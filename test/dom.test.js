@@ -141,11 +141,18 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   console.log('[1.1] 时间语义与排序');
   const nums = Array.from(document.querySelectorAll('.cd-item')).map((el) => {
     const box = el.querySelector('.cd-item-num');
+    const bEl = box.querySelector('b');
+    const iEl = box.querySelector('i');
+    // 三天内不再显示数字，而是「今天 / 明天 / 后天」
+    const words = { '今天': 0, '明天': 1, '后天': 2 };
     return {
       id: el.dataset.id,
       mode: box.className.includes('--remain') ? 'remain' : (box.className.includes('--elapsed') ? 'elapsed' : 'none'),
-      days: parseInt(box.querySelector('b').textContent, 10),
-      unit: box.querySelector('i').textContent
+      days: Object.prototype.hasOwnProperty.call(words, bEl.textContent)
+        ? words[bEl.textContent]
+        : parseInt(bEl.textContent, 10),
+      word: bEl.className.includes('is-word') ? bEl.textContent : '',
+      unit: iEl ? iEl.textContent : ''
     };
   });
   const firstElapsed = nums.findIndex((n) => n.mode === 'elapsed');
@@ -154,14 +161,16 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   ok(nums.slice(firstElapsed).every((n) => n.mode === 'elapsed'), '后半段全部是已过天数');
   ok(nums.slice(0, firstElapsed).every((n, i, a) => i === 0 || a[i - 1].days <= n.days), '剩余天数升序（越近越前）');
   ok(nums.slice(firstElapsed).every((n, i, a) => i === 0 || a[i - 1].days >= n.days), '已过天数降序（越久越前）');
-  ok(nums.filter((n) => n.mode === 'remain').every((n) => n.unit === '剩余天数' || n.unit === '就是今天'), '倒数类单位是剩余天数');
+  ok(nums.filter((n) => n.mode === 'remain').every((n) => n.unit === '剩余天数' || n.word !== ''),
+    '倒数类单位是剩余天数（三天内改说今天/明天/后天）');
   ok(nums.filter((n) => n.mode === 'elapsed').every((n) => n.unit === '已过天数' || n.unit === '就在今天'), '纪念类单位是已过天数');
   eq(nums.find((n) => n.id === 'b3').unit, '已过天数', '纪念日显示已过天数');
   eq(nums.find((n) => n.id === 'b3').mode, 'elapsed', '纪念日归入已过组');
   // 纪念日的已过天数 = 从最初日期到今天
   eq(nums.find((n) => n.id === 'b3').days, Core.diffDays(Core.parseYMD('2018-06-16'), TODAY), '已过天数按原始日期计算');
   eq(nums.find((n) => n.id === 'b2').days, 0, '今天生日剩余 0 天');
-  eq(nums.find((n) => n.id === 'b2').unit, '就是今天', '今天用「就是今天」说明');
+  eq(nums.find((n) => n.id === 'b2').word, '今天', '剩余 0 天显示「今天」');
+  eq(nums.find((n) => n.id === 'b2').unit, '', '文字状态不再挂「剩余天数」单位');
 
   console.log('[2] XSS 防护');
   ok(!document.querySelector('.cd-item img'), '注入的 img 未被解析执行');
@@ -427,7 +436,9 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
 
   document.querySelector('.cd-chip[data-f="birthday"]').click();
   await wait(60);
-  ok($('.cd-hero-label').textContent.includes('还有'), '生日分区：置顶是剩余语义');
+  // 剩余 0/1/2 天时标签是「…就在 / …就是」，所以判「不是已过语义」而不是死抠「还有」
+  ok(!!$('.cd-hero-num--remain'), '生日分区：置顶是剩余语义');
+  ok(!$('.cd-hero-label').textContent.includes('已经走过'), '生日分区：置顶不按已过语义');
   eq(heroId(), firstId(), '生日分区：置顶 = 该分区第一条');
 
   // 关掉开关：卡片消失、列表贴顶，设置写入同步数据
@@ -855,6 +866,147 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     await new Promise((r) => setTimeout(r, 200));
     eq($4('.cd-title').textContent, 'Milestones', '再切回英文同样生效');
     dom4.window.close();
+  }
+
+  console.log('[22.1] 小月年份的除夕可正常编辑');
+  {
+    // 2026 年腊月只有 29 天：预设仍以「腊月三十」存，这里验证编辑时不把日控件置空、
+    // 预览不误报「日期不存在」，保存后语义与日期都还对
+    const seed = {
+      version: 1, settings: { lang: 'zh' },
+      events: [{
+        id: 'cx', title: '除夕', kind: 'festival', calendar: 'lunar', date: '2027-02-05',
+        lunar: { year: 2026, month: 12, day: 30, isLeap: false }, repeat: true,
+        color: '#c92a2a', note: '', preset: 'chuxi'
+      }]
+    };
+    const vc5 = new VirtualConsole();
+    const errs5 = [];
+    vc5.on('jsdomError', (e) => errs5.push(e.message));
+    const dom5 = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc5,
+      beforeParse(w5) {
+        w5.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w5.__STORE__ = JSON.stringify(seed);
+        w5.PluginAPI = {
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(w5.__STORE__); },
+          persistDataSynced(s) { w5.__STORE__ = s; return Promise.resolve(); },
+          openDialog() { return Promise.resolve('取消'); }
+        };
+      }
+    });
+    const d5 = dom5.window.document;
+    const $5 = (s) => d5.querySelector(s);
+    await new Promise((r) => setTimeout(r, 300));
+
+    $5('.cd-item[data-id="cx"]').click();
+    await new Promise((r) => setTimeout(r, 200));
+    eq($5('#cdLayer').hidden, false, '弹层打开');
+    eq($5('#fLD').value, '29', '农历日控件回填为该月最后一天，不留空值');
+    ok(!$5('#fLunarPreview').className.includes('warn'), '预览不报「日期不存在」：' + $5('#fLunarPreview').textContent);
+    ok($5('#fLunarPreview').textContent.includes('对应公历'), '预览给出对应公历日期');
+
+    $5('#cdSave').click();
+    await new Promise((r) => setTimeout(r, 400));
+    const saved = JSON.parse(dom5.window.__STORE__).events.filter((e) => e.id === 'cx')[0];
+    eq(saved.lunar.day, 30, '仍按腊月三十存储（小月由核心逻辑回落）');
+    const occ = Core.resolveLunar(2026, 12, 30, false, 'regular');
+    eq(Core.ymd(occ), saved.date, '保存的日期 = 当年实际除夕');
+    eq(errs5.length, 0, '无运行时错误');
+    dom5.window.close();
+  }
+
+  console.log('[22.2] 三天内改说「今天 / 明天 / 后天」');
+  {
+    const dayAt = (n) => Core.ymd(new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() + n));
+    const mk = (id, n, kind) => ({
+      id, title: id, kind: kind || 'countdown', calendar: 'solar', date: dayAt(n),
+      repeat: false, color: '#1c7ed6', note: ''
+    });
+    const seed = {
+      version: 6, settings: { lang: 'zh' },
+      events: [mk('d0', 0), mk('d1', 1), mk('d2', 2), mk('d3', 3), mk('d5', 5), mk('bd1', 1, 'birthday')]
+    };
+    const dom6 = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(w6) {
+        w6.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w6.__STORE__ = JSON.stringify(seed);
+        w6.__SAVES__ = [];
+        w6.PluginAPI = {
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(w6.__STORE__); },
+          persistDataSynced(s) { w6.__STORE__ = s; return Promise.resolve(); },
+          openDialog() { return Promise.resolve('取消'); }
+        };
+      }
+    });
+    const d6 = dom6.window.document;
+    await new Promise((r) => setTimeout(r, 300));
+
+    const cell = (id) => {
+      const box = d6.querySelector('.cd-item[data-id="' + id + '"] .cd-item-num');
+      const b = box.querySelector('b');
+      const i = box.querySelector('i');
+      return { text: b.textContent, word: b.className.includes('is-word'), unit: i ? i.textContent : '' };
+    };
+
+    eq(cell('d0').text, '今天', '剩余 0 天 → 今天');
+    eq(cell('d1').text, '明天', '剩余 1 天 → 明天');
+    eq(cell('d2').text, '后天', '剩余 2 天 → 后天');
+    ok(cell('d0').word && cell('d1').word && cell('d2').word, '三条都走文字样式');
+    eq(cell('d0').unit + cell('d1').unit + cell('d2').unit, '', '文字状态不再显示单位行');
+    eq(cell('d3').text, '3', '剩余 3 天仍显示数字');
+    eq(cell('d3').unit, '剩余天数', '3 天以上保留「剩余天数」单位');
+    eq(cell('d5').text, '5', '更远的天数照旧');
+    eq(cell('bd1').text, '明天', '生日同样适用（剩余语义一致）');
+
+    // 置顶卡片：标签从「距离…还有」换成「…就是 / …就在」，大数字换成文字
+    const hero = d6.querySelector('.cd-hero');
+    ok(hero.querySelector('.cd-hero-label').textContent.includes('就是'), '今天：标签说「就是」');
+    eq(hero.querySelector('.cd-hero-num').textContent, '今天', '今天：大数字位显示文字');
+    ok(hero.querySelector('.cd-hero-num').className.includes('--word'), '文字状态带 --word 类，字号单独收过');
+    eq(hero.querySelectorAll('.cd-hero-num span').length, 0, '文字状态不显示「剩余天数」副标签');
+    dom6.window.close();
+
+    // 英文包：同样的三天内也要说 Today / Tomorrow，不能回落成裸键名
+    const seedEn = { version: 6, settings: { lang: 'en' }, events: [mk('e0', 0), mk('e1', 1)] };
+    const dom7 = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(w7) {
+        w7.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w7.__STORE__ = JSON.stringify(seedEn);
+        w7.PluginAPI = {
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(w7.__STORE__); },
+          persistDataSynced(s) { w7.__STORE__ = s; return Promise.resolve(); },
+          openDialog() { return Promise.resolve('Cancel'); }
+        };
+      }
+    });
+    const d7 = dom7.window.document;
+    await new Promise((r) => setTimeout(r, 300));
+    const enCell = (id) => d7.querySelector('.cd-item[data-id="' + id + '"] .cd-item-num b').textContent;
+    eq(enCell('e0'), 'Today', '英文：Today');
+    eq(enCell('e1'), 'Tomorrow', '英文：Tomorrow');
+    ok(d7.querySelector('.cd-hero-label').textContent.includes('is'), '英文置顶卡片用「… is」句式');
+    dom7.window.close();
   }
 
   console.log('[23] 无运行时错误');

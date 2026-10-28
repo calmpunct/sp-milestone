@@ -100,5 +100,18 @@ eq(L.lunarText(6, 10, true), '农历闰六月初十', '闰六月初十');
 eq(L.lunarText(12, 30, false), '农历腊月三十', '腊月三十');
 eq(L.lunarText(11, 23, false), '农历冬月廿三', '冬月廿三');
 
+// ---- 8. 超出可算年限 ----
+console.log('[8] 超出可算年限');
+eq(L.solarToLunar(d(1900, 1, 30)).outOfRange, true, '1900-01-30 早于起点标记超范围');
+eq(L.solarToLunar(d(2100, 12, 31)).outOfRange, undefined, '2100-12-31 仍在范围内');
+{
+  // 晚于 2100 年腊月末：必须给哨兵，而不是把 idx 钳到末年继续算（原先会返回 day 为几百的脏数据）
+  const late = L.solarToLunar(d(2101, 3, 1));
+  eq(late.outOfRange, true, '2101-03-01 晚于终点标记超范围');
+  const dayOk = late.day >= 1 && late.day <= late.monthDays;
+  if (!dayOk) fail++;
+  console.log(`     ${dayOk ? '✓' : '✗'} 超范围时 day=${late.day} 仍在 1..${late.monthDays} 之间`);
+}
+
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail === 0 ? 0 : 1);

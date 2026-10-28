@@ -87,6 +87,23 @@ ok(!/require\(|process\.|__dirname/.test(app), 'app.js 无 Node API 依赖');
 ok(!/crypto\.randomUUID/.test(app), '未使用 crypto.randomUUID（兼容旧 WebView）');
 ok(!/\?\.|\?\?/.test(app), '未使用可选链/空值合并（兼容旧 WebView）');
 
+console.log('[3.1] 拼 HTML 时文案一律转义');
+// 语言包是第三方可贡献内容（见 src/i18n.js 的说明），不能当成可信 HTML 塞进 innerHTML。
+// 这里做粗粒度静态约束：拼标签的行里，t('...') 必须包在 esc(...) / I.html(...) 里
+const unsafeT = [];
+app.split('\n').forEach((line, i) => {
+  if (!/'</.test(line)) return;
+  const re = /\bt\(\s*'/g;
+  let m;
+  while ((m = re.exec(line))) {
+    const pre = line.slice(Math.max(0, m.index - 10), m.index);
+    if (/esc\(\s*$/.test(pre) || /I\.html\(\s*$/.test(pre) || /\.html\(\s*$/.test(pre)) continue;
+    unsafeT.push((i + 1) + ': ' + line.trim());
+  }
+});
+ok(unsafeT.length === 0, '拼 HTML 的文案都经过 esc()/I.html()', unsafeT.join(' | '));
+ok(!/FESTIVAL_GROUPS\[g\]\s*\+/.test(app), '节日分组标题也走 esc()');
+
 console.log('[4] 清单完整性');
 ['id', 'name', 'version', 'manifestVersion', 'minSupVersion', 'iFrame', 'permissions', 'hooks']
   .forEach((k) => ok(manifest[k] !== undefined, '字段 ' + k));

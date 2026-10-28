@@ -373,8 +373,9 @@
 
   function ensureProject(projects, title) {
     var api = P();
+    // findProject 返回的已经是项目 id（字符串），不要再取 .id
     var hit = findProject(projects, title);
-    if (hit) { projectIdCache = hit.id; return Promise.resolve(hit.id); }
+    if (hit) { projectIdCache = hit; return Promise.resolve(hit); }
 
     // 数据里配置的项目名被改过时，沿用上次创建的项目，避免重复建
     if (projectIdCache) {

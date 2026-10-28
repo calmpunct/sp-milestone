@@ -144,6 +144,13 @@
       // 早于 1900-01-31，不在支持范围
       return { year: MIN_YEAR, month: 1, day: 1, isLeap: false, monthDays: 29, outOfRange: true };
     }
+    // 晚于 2100 年腊月最后一天：同样只能给哨兵，不能钳到末年继续算（否则会返回 day 巨大的脏数据）
+    if (offset >= YEAR_OFF[LAST_IDX] + YEAR_LEN[LAST_IDX]) {
+      return {
+        year: MAX_YEAR, month: 12, day: monthDays(MAX_YEAR, 12),
+        isLeap: false, monthDays: monthDays(MAX_YEAR, 12), outOfRange: true
+      };
+    }
 
     // 用平均年长先估一个下标，再按前缀和向前/向后校正（最多挪几天，不必从 1900 年扫）
     var idx = Math.floor(offset / 354.367);

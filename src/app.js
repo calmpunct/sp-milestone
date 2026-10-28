@@ -22,6 +22,32 @@
     return t('kindl.' + (Core.KINDS[kind] ? kind : 'generic'));
   }
 
+  /* ---------------- 展示层：天数 → 人话 ----------------
+   * 核心层（event-core）只给数字与语义（mode/days），「说成今天还是 1 天」属于界面措辞，
+   * 一律在这里翻译，不回流到数据层，列表与置顶卡片共用同一份判断。
+   */
+
+  /** 剩余 0/1/2 天说成「今天 / 明天 / 后天」，更远的返回空串表示仍按数字显示 */
+  var SOON_DAYS = 3;
+
+  function remainWord(days) {
+    return days >= 0 && days < SOON_DAYS ? t('when.' + days) : '';
+  }
+
+  /**
+   * 剩余天数的展示形态
+   * @returns {{text:string, unit:string, word:boolean}} word=true 表示 text 是文字而非数字
+   */
+  function remainDisplay(days) {
+    var word = remainWord(days);
+    return {
+      text: word || String(days),
+      // 文字本身已经把话说完了，再挂「剩余天数」会读成两遍
+      unit: word ? '' : t('unit.remain'),
+      word: !!word
+    };
+  }
+
   var state = {
     data: Core.emptyData(),
     filter: 'all',
@@ -259,7 +285,8 @@
         themeObserver = new window.MutationObserver(detectTheme);
         themeObserver.observe(document.documentElement, {
           attributes: true,
-          attributeFilter: ['class', 'style', 'data-theme', 'data-cd-theme']
+          // 不要监听 data-cd-theme：那是 detectTheme 自己写的，监听它会自我触发一轮无谓的重算
+          attributeFilter: ['class', 'style', 'data-theme']
         });
         if (document.body) {
           themeObserver.observe(document.body, {
@@ -437,20 +464,29 @@
       var occ = row.occ;
       var m = row.metric;
       var remain = m.mode === 'remaining';
+      // 三天内改说「就在 今天 / 明天 / 后天」，标签随之从「距离…还有」换成「…就在」
+      var disp = remain ? remainDisplay(m.days) : null;
       rc = hexToRgb(ev.color).join(',');
 
-      var label = remain
-        ? I.html('hero.remainLabel', { name: esc(row.name) })
-        : I.html('hero.elapsedLabel', { name: esc(row.name) });
+      var label;
+      if (!remain) label = I.html('hero.elapsedLabel', { name: esc(row.name) });
+      else if (disp.word) {
+        label = I.html(m.days === 0 ? 'hero.todayLabel' : 'hero.soonLabel', { name: esc(row.name) });
+      } else label = I.html('hero.remainLabel', { name: esc(row.name) });
 
-      var heroCls = remain ? 'cd-hero-num cd-hero-num--remain' : 'cd-hero-num cd-hero-num--elapsed';
-      var num = '<div class="' + heroCls + '">' +
-          m.days + '<span>' + t(remain ? 'hero.unitRemain' : 'hero.unitElapsed') + '</span></div>';
+      var heroCls = remain
+        ? 'cd-hero-num cd-hero-num--remain' + (disp.word ? ' cd-hero-num--word' : '')
+        : 'cd-hero-num cd-hero-num--elapsed';
+      // 文字状态不再需要「剩余天数」单位，数字状态保持原样
+      var unit = disp && disp.word ? '' : '<span>' + esc(t(remain ? 'hero.unitRemain' : 'hero.unitElapsed')) + '</span>';
+      var num = '<div class="' + heroCls + '">' + esc(disp ? disp.text : String(m.days)) + unit + '</div>';
 
       var lf = L.solarToLunar(occ.date);
+      // 超出农历查表年限时不再显示换算结果，避免出现「腊月三十日第 500 天」这类脏值
+      var lunarMeta = lf.outOfRange ? esc(t('unit.overflow')) : L.lunarText(lf.month, lf.day, lf.isLeap);
       var meta = [
         Core.cnDate(occ.date),
-        L.lunarText(lf.month, lf.day, lf.isLeap),
+        lunarMeta,
         ageText(row)
       ].filter(Boolean).join('<i class="sep">·</i>');
 
@@ -460,8 +496,8 @@
         var pct = Math.round(p * 100);
         bar =
           '<div class="cd-bar"><i style="width:' + pct + '%"></i></div>' +
-          '<div class="cd-bar-text"><span>' + t('hero.barDone', { p: pct }) + '</span><span>' +
-            t('hero.barTotal') + '</span></div>';
+          '<div class="cd-bar-text"><span>' + esc(t('hero.barDone', { p: pct })) + '</span><span>' +
+            esc(t('hero.barTotal')) + '</span></div>';
       }
 
       html =
@@ -497,14 +533,17 @@
     var isToday = m.mode !== 'none' && m.days === 0;
     var expired = isExpiredCountdown(ev, m);
 
-    var numText, unitText, numCls = '';
+    var numText, unitText, numCls = '', bAttr = '';
     if (m.mode === 'none') {
       numText = '—';
       unitText = t('unit.overflow');
+      bAttr = ' class="is-txt"';
     } else if (m.mode === 'remaining') {
-      numText = String(m.days);
-      unitText = m.days === 0 ? t('unit.todayRemain') : t('unit.remain');
       numCls = ' cd-item-num--remain';
+      var disp = remainDisplay(m.days);
+      numText = disp.text;
+      unitText = disp.unit;
+      if (disp.word) bAttr = ' class="is-word"';
     } else {
       numText = String(m.days);
       unitText = m.days === 0 ? t('unit.todayElapsed') : t('unit.elapsed');
@@ -540,8 +579,8 @@
           '<div class="cd-item-sub">' + esc(sub) + '</div>' +
         '</div>' +
         '<div class="cd-item-num' + numCls + '">' +
-          '<b' + (m.mode === 'none' ? ' class="is-txt"' : '') + '>' + numText + '</b>' +
-          '<i>' + unitText + '</i>' +
+          '<b' + bAttr + '>' + esc(numText) + '</b>' +
+          (unitText ? '<i>' + esc(unitText) + '</i>' : '') +
         '</div>' +
       '</div>';
   }
@@ -684,7 +723,7 @@
 
   function buildYearSelect() {
     var html = '';
-    for (var y = L.MIN_YEAR; y <= L.MAX_YEAR; y++) html += '<option value="' + y + '">' + t('lunar.yearOpt', { y: y }) + '</option>';
+    for (var y = L.MIN_YEAR; y <= L.MAX_YEAR; y++) html += '<option value="' + y + '">' + esc(t('lunar.yearOpt', { y: y })) + '</option>';
     $('#fLY').innerHTML = html;
   }
 
@@ -736,13 +775,15 @@
   function updateLunarPreview() {
     var l = currentLunar();
     var p = $('#fLunarPreview');
-    var solar = L.lunarToSolar(l.year, l.month, l.day, l.isLeap);
+    var dim = l.isLeap ? L.leapDays(l.year) : L.monthDays(l.year, l.month);
+    // 与保存口径一致：小月选了「三十」按当月最后一天回落（除夕以腊月三十存，遇小月自动落到廿九），
+    // 否则预览报「日期不存在」而保存却成功，用户看到的两套结论互相矛盾
+    var solar = Core.resolveLunar(l.year, l.month, l.day, l.isLeap, 'regular');
     if (!solar) {
       p.className = 'cd-hint warn';
       p.textContent = t('lunar.invalid');
       return;
     }
-    var dim = l.isLeap ? L.leapDays(l.year) : L.monthDays(l.year, l.month);
     p.className = 'cd-hint';
     p.textContent = t('lunar.preview', {
       lunar: L.lunarText(l.month, l.day, l.isLeap),
@@ -750,7 +791,7 @@
       week: Core.WEEK[solar.getDay()],
       gz: L.ganzhiOf(l.year),
       z: L.zodiacOf(l.year)
-    }) + (l.day > dim ? t('lunar.dimSuffix', { n: dim, d: L.dayName(dim) }) : '');
+    }) + (dim && l.day > dim ? t('lunar.dimSuffix', { n: dim, d: L.dayName(dim) }) : '');
   }
 
   function syncLunarControls(resetDay) {
@@ -782,7 +823,7 @@
     ['solar', 'lunar', 'term'].forEach(function (g) {
       var items = Core.FESTIVALS.filter(function (f) { return f.group === g; });
       if (!items.length) return;
-      html += '<div class="cd-preset-group">' + Core.FESTIVAL_GROUPS[g] + '</div>' +
+      html += '<div class="cd-preset-group">' + esc(Core.FESTIVAL_GROUPS[g]) + '</div>' +
         '<div class="cd-preset-list">' + items.map(function (f) {
           return '<button type="button" class="cd-preset" data-k="' + f.key + '" aria-pressed="false">' +
             esc(f.name) + '</button>';
@@ -1004,7 +1045,8 @@
       $('#fLeapWrap').hidden = !(L.leapMonth(d.lunar.year) === d.lunar.month);
       $('#fLeap').checked = !!d.lunar.isLeap && !$('#fLeapWrap').hidden;
       buildDaySelect(d.lunar.year, d.lunar.month, $('#fLeap').checked, d.lunar.day);
-      $('#fLD').value = String(d.lunar.day);
+      // 不要再用 d.lunar.day 覆盖下拉框的值：小月存了「三十」时该选项不存在，
+      // 赋值会让 select.value 变成空串，进而让预览误报「日期不存在」。buildDaySelect 已按该月天数钳好
       updateLunarPreview();
     } else {
       solarToLunarFields(Core.parseYMD(d.date) || new Date());

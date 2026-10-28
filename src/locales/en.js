@@ -120,6 +120,11 @@
     'chip.archive': "Archive",
     'chip.archiveN': "Archive {n}",
 
+    /* ---------------- relative days (no numbers within 3 days) ---------------- */
+    'when.0': "Today",
+    'when.1': "Tomorrow",
+    'when.2': "In 2 days",
+
     /* ---------------- subtitle ---------------- */
     'sub.archived': "{n} archived · not reminded",
     'sub.archivedEmpty': "Nothing archived yet",
@@ -132,6 +137,9 @@
 
     /* ---------------- featured card ---------------- */
     'hero.remainLabel': "<b>{name}</b> in",
+    // within 0/1/2 days the big number becomes "Today / Tomorrow / In 2 days"
+    'hero.todayLabel': "<b>{name}</b> is",
+    'hero.soonLabel': "<b>{name}</b> is",
     'hero.elapsedLabel': "<b>{name}</b> since",
     'hero.unitRemain': "days left",
     'hero.unitElapsed': "days passed",
