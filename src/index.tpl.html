@@ -210,7 +210,21 @@
 
       <div class="cd-field">
         <span class="cd-label" data-i18n="set.about"></span>
-        <p class="cd-hint" id="sAbout"></p>
+        <!-- 版本号由 app.js 按清单版本填入；作者与反馈地址是固定信息，直接写在模板里 -->
+        <div class="cd-about">
+          <p class="cd-about-row cd-about-row--ver" id="sAbout"></p>
+          <p class="cd-about-row">
+            <span class="cd-about-k" data-i18n="about.author"></span>
+            <span class="cd-about-v">calmpunct</span>
+          </p>
+          <p class="cd-about-row">
+            <span class="cd-about-k" data-i18n="about.feedback"></span>
+            <!-- 外链只用于跳转，不加载任何外部资源；target/rel 避免把插件视图本身导航走 -->
+            <a class="cd-about-v cd-about-link"
+               href="https://github.com/calmpunct/sp-milestone/issues"
+               target="_blank" rel="noopener noreferrer">github.com/calmpunct/sp-milestone/issues</a>
+          </p>
+        </div>
       </div>
     </div>
   </div>

@@ -419,6 +419,18 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   eq($('#sHero').checked, true, '默认开启置顶卡片');
   ok($('#sAbout').textContent.includes('里程碑'), '关于信息显示插件名');
   ok(/v\d+\.\d+\.\d+/.test($('#sAbout').textContent), '关于信息显示版本号');
+
+  // 作者与反馈地址（设置 > 关于）
+  const aboutBox = document.querySelector('.cd-about');
+  ok(!!aboutBox, '关于是一张三行的信息卡');
+  ok(aboutBox.textContent.includes('calmpunct'), '关于里显示插件作者');
+  eq(aboutBox.querySelector('[data-i18n="about.author"]').textContent, '作者', '作者标签跟着语言走');
+  eq(aboutBox.querySelector('[data-i18n="about.feedback"]').textContent, '反馈', '反馈标签跟着语言走');
+  const fbLink = aboutBox.querySelector('a.cd-about-link');
+  eq(!!fbLink, true, '反馈地址是可点链接');
+  eq(fbLink.getAttribute('href'), 'https://github.com/calmpunct/sp-milestone/issues', '反馈地址指向仓库 issues');
+  eq(fbLink.getAttribute('target'), '_blank', '反馈链接在新窗口打开');
+  ok(/noopener/.test(fbLink.getAttribute('rel') || ''), '反馈链接断开 opener');
   $('#cdSetClose').click();
   await wait(420);
   eq($('#cdSetLayer').hidden, true, '设置面板关闭');

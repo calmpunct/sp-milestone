@@ -24,6 +24,8 @@
     appName: "里程碑",
     projectDefault: "里程碑提醒",
     about: "{name} v{ver}",
+    'about.author': "作者",
+    'about.feedback': "反馈",
 
     /* ---------------- 类型 ---------------- */
     'kind.birthday': "生日",

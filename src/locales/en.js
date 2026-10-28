@@ -25,6 +25,8 @@
     appName: "Milestones",
     projectDefault: "Milestones",
     about: "{name} v{ver}",
+    'about.author': "Author",
+    'about.feedback': "Feedback",
 
     /* ---------------- kinds ---------------- */
     'kind.birthday': "Birthday",

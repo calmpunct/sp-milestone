@@ -17,6 +17,8 @@
 - **主题观察器监听自己写入的属性**：`data-cd-theme` 是 `detectTheme()` 自己写的，留在 `attributeFilter` 里会让每次主题切换多触发一轮 `getComputedStyle`，移除
 
 ### 变更
+- **设置 > 关于补齐作者与反馈入口**：原来只有一行「名称 v版本」。现在是一张浅底信息卡，三行分别是版本、作者 `calmpunct`、反馈地址（`https://github.com/calmpunct/sp-milestone/issues`，可点，`target="_blank"` + `rel="noopener noreferrer"` 新窗口打开，长地址按需折行）。作者与反馈是固定信息，直接写在模板里，只有标签走语言包（新增 `about.author` / `about.feedback`）；`dom.test.js` 与 `static.test.js` 各自钉住「作者名 + 反馈地址 + 新窗口」不被改丢
+- **自包含检查放行外链跳转**：原规则「`index.html` 里不得出现 `src=`/`href=` 加 http(s)」会把反馈地址这类 `<a>` 一并拦掉。改为只拦会发起请求的写法（任意标签的 `src=`、`<link href=>`），`<a href>` 放行但必须带 `target="_blank"` 与 `rel="noopener"`；规则收在 `build.js` 的 `externalRefIssues()` 里，构建与 `static.test.js` 共用同一份
 - **三天内不用数字，改说「今天 / 明天 / 后天」**：剩余 0/1/2 天时数字位直接显示文字，比「0 剩余天数」直观。列表里文字状态不再挂「剩余天数」单位（避免读成两遍），3 天以上仍是数字 + 单位；置顶卡片的句式同步从「距离 X 还有」换成「X 就是 / 就在」，大数字换成文字并单独收了字号（`.cd-hero-num--word` / `.cd-item-num b.is-word`）。生日、节日、纪念日的前置情形共用同一口径（都是「还有多少天」），文案键 `when.0/1/2`、`hero.todayLabel`、`hero.soonLabel`。判断只落在展示层：`event-core` 仍只返回数字 `days`，`app.js` 的 `remainDisplay(days)` 统一翻译，列表与置顶卡片共用，数据层与提醒任务一行未改
 - **精简设置面板文案**：删掉语言下方的「自动跟随应用语言」说明、整块「说明」分组、以及「关于」里的项目名与同步描述（只留 `名称 v版本`）
 - **移除设置里的删除线开关**：过期倒数日默认就带删除线（过期即视为这件事已经结束，划线是常态，不需要开关）。设置面板少一个分组、`settings` 少一个 `strikeExpired` 字段；旧数据里残留的该字段在规范化时被丢弃

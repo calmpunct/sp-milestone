@@ -8,6 +8,8 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+// 体积常量与自包含检查只有 build.js 一份，这里引用它，避免两处规则各写一遍又慢慢漂移
+const { SIZE_WARN, SIZE_MAX, externalRefIssues } = require('../build.js');
 
 let fail = 0;
 function ok(c, label, detail) {
@@ -80,7 +82,13 @@ console.log(`     定义 ${defined.size} 个类，引用 ${used.size} 个，缺�
 
 console.log('[3] 静态资源自包含');
 ok(!/<script\s+src=/i.test(dist), 'index.html 无外部脚本');
-ok(!/\b(?:src|href)\s*=\s*["']https?:\/\//i.test(dist), 'index.html 无外链资源');
+// 自包含 = 运行时不加载任何外部资源。<a href> 只是跳转，不算资源，规则见 build.js 的 externalRefIssues()
+const extIssues = externalRefIssues(dist);
+ok(extIssues.length === 0, 'index.html 不加载外部资源（跳转链接除外）', extIssues.join('；'));
+// 关于里的作者与反馈地址：改模板时别把这两条信息弄丢（作者名单独成元素，不能只靠 URL 里出现）
+ok(/class="cd-about-v">calmpunct</.test(dist), '关于里显示了插件作者 calmpunct');
+ok(/<a\b[^>]*href="https:\/\/github\.com\/calmpunct\/sp-milestone\/issues"/i.test(dist),
+  '关于里有反馈地址链接 github.com/calmpunct/sp-milestone/issues');
 ok(!/@import/i.test(dist), 'index.html 无 @import');
 ok(!/\bfetch\(|XMLHttpRequest/.test(app), 'app.js 无网络请求');
 ok(!/require\(|process\.|__dirname/.test(app), 'app.js 无 Node API 依赖');
@@ -168,8 +176,6 @@ const sizes = {};
 });
 const total = Object.keys(sizes).reduce((s, f) => s + sizes[f], 0);
 ok(total < 1024 * 1024, '产物体积 < 1MB', (total / 1024).toFixed(0) + ' KB');
-// 预算常量只有 build.js 一份，这里引用它，避免两处数字各写一遍又慢慢漂移
-const { SIZE_WARN, SIZE_MAX } = require('../build.js');
 ok(sizes['index.html'] <= SIZE_MAX, 'index.html 不超过上限 ' + SIZE_MAX / 1024 + 'KB',
   (sizes['index.html'] / 1024).toFixed(1) + ' KB');
 ok(sizes['plugin.js'] <= SIZE_MAX, 'plugin.js 不超过上限 ' + SIZE_MAX / 1024 + 'KB',

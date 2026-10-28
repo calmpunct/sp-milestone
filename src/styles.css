@@ -664,6 +664,52 @@ html[data-cd-theme='dark'] .cd-preset[aria-pressed='true'] { color: #101318; }
 
 .cd-hint.warn { color: var(--cd-danger); background: rgba(224, 49, 49, 0.08); }
 
+/* 关于：版本 / 作者 / 反馈三行挤在一张浅底卡片里，比三个独立提示块省地方 */
+.cd-about {
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(128, 138, 155, 0.09);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.cd-about-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  color: var(--cd-text);
+}
+
+.cd-about-row + .cd-about-row { margin-top: 4px; }
+
+.cd-about-row--ver { color: var(--cd-muted); font-weight: 700; }
+
+.cd-about-k {
+  flex: 0 0 auto;
+  /* 固定一列宽，中英文下作者与反馈的取值都对齐成一条竖线 */
+  min-width: 4.9em;
+  color: var(--cd-muted);
+}
+
+.cd-about-v { flex: 1 1 auto; min-width: 0; }
+
+.cd-about-link {
+  color: var(--cd-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+.cd-about-link:hover { text-decoration-style: solid; }
+
+.cd-about-link:focus-visible {
+  outline: 2px solid var(--cd-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .cd-switch-row {
   display: flex;
   align-items: center;

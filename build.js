@@ -74,6 +74,27 @@ function localePayload() {
   return { c: codes, d };
 }
 
+/**
+ * 外链检查：返回问题列表（空数组 = 自包含）。
+ * 拦的是「会发起请求」的写法：任意标签的 src=、<link href=。
+ * <a href="https://..."> 只做跳转、不加载资源（设置页的反馈地址就是这种），放行；
+ * 但它必须新开窗口并断开 opener —— 否则会把插件视图本身导航走。
+ */
+function externalRefIssues(html) {
+  const out = [];
+  if (/\bsrc\s*=\s*["']https?:\/\//i.test(html)) out.push('存在外链资源 src=');
+  if (/<link\b[^>]*\bhref\s*=\s*["']https?:\/\//i.test(html)) out.push('存在外链样式 <link href=>');
+  const anchors = html.match(/<a\b[^>]*\bhref\s*=\s*["']https?:\/\/[^>]*>/gi) || [];
+  anchors.forEach((a) => {
+    const newTab = /\btarget\s*=\s*["']_blank["']/i.test(a);
+    const safeRel = /\brel\s*=\s*["'][^"']*noopener/i.test(a);
+    if (!newTab || !safeRel) {
+      out.push('外链锚点缺少 target="_blank" / rel="noopener"：' + a.trim());
+    }
+  });
+  return out;
+}
+
 /** 产物自检：内联脚本交给 V8 解析一遍，语法有问题立刻失败，不产出坏包 */
 function assertParses(code, label) {
   try {
@@ -120,7 +141,8 @@ function buildIndexHtml() {
     throw new Error('index.html 未包含农历模块');
   }
   if (/<script\s+src=/i.test(html)) throw new Error('index.html 不得引用外部脚本');
-  if (/\b(?:src|href)\s*=\s*["']https?:\/\//i.test(html)) throw new Error('index.html 不得引用外链资源');
+  const ext = externalRefIssues(html);
+  if (ext.length) throw new Error('index.html 必须自包含：' + ext.join('；'));
   if (/@import\s+url/i.test(html)) throw new Error('index.html 不得 @import 外部样式');
   // 内联脚本 / 样式里出现 </script>、</style> 或 <!-- 会把 HTML 提前截断，写盘前先拦住
   if (/<\/script|<!--/.test(js)) throw new Error('内联脚本含 </script> 或 <!--，会截断 HTML');
@@ -352,7 +374,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  buildIndexHtml, buildPluginJs, assertNaming, read,
+  buildIndexHtml, buildPluginJs, assertNaming, read, externalRefIssues,
   // 体积常量与构建模式导出给测试用，避免测试里再写一份同样的数字
   SIZE_WARN, SIZE_MAX
 };
