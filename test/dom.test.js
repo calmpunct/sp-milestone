@@ -114,6 +114,28 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   ok(titles.some((t) => /（\d+岁）$/.test(t)), '生日名称带年龄（如「小米生日（7岁）」）');
   ok(!subs.some((t) => t.includes('岁')), '年龄不再重复出现在副标题');
   ok(subs.some((t) => t.includes('周年')), '纪念日显示周年');
+
+  // 周年按「今天已满整年」算：2018-06-16 到今天比「下次发生日的年份差」少一年
+  const annSub = (id) => {
+    const el = Array.from(document.querySelectorAll('.cd-item')).find((n) => n.dataset.id === id);
+    return el ? el.querySelector('.cd-item-sub').textContent : '';
+  };
+  const now = new Date();
+  let markYear = now.getFullYear();
+  if (now.getMonth() < 5 || (now.getMonth() === 5 && now.getDate() < 16)) markYear--;
+  const annYears = markYear - 2018;
+  // 零头天数：从上一个周年（每年 6 月 16 日）数到今天
+  const remDays = Math.round(
+    (new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(markYear, 5, 16)) / 86400000
+  );
+  ok(annSub('b3').includes(annYears + ' 周年'), '纪念日周年 = 已满整年（' + annYears + ' 周年）');
+  ok(!annSub('b3').includes((annYears + 1) + ' 周年'), '不再多算一年（不是 ' + (annYears + 1) + ' 周年）');
+  if (remDays > 0) {
+    ok(annSub('b3').includes(annYears + ' 周年 ' + remDays + ' 天'), '周年后面带上零头天数（' + remDays + ' 天）');
+  } else {
+    ok(!annSub('b3').includes(' 天'), '正好是周年当天时不显示零头');
+  }
+  ok(!annSub('b5').includes('周年') && !annSub('b5').includes(' 天'), '不满一周年只显示天数');
   eq(document.querySelectorAll('.cd-bell').length, 6, '开启提醒的条目显示铃铛');
 
   console.log('[1.1] 时间语义与排序');
@@ -627,26 +649,40 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   eq(byId(expired.id).querySelector('.cd-tag').textContent, '过期的倒数日', '过期后标签改为「过期的倒数日」');
   eq(byId(expired.id).querySelector('.cd-item-num i').textContent, '已过天数', '过期后显示已过天数');
 
-  // 设置里关掉删除线
+  // 过期即划掉，没有开关可关
   $('#cdSettings').click();
   await wait(150);
-  eq($('#sStrike').checked, true, '删除线开关默认打开');
-  $('#sStrike').click();
-  await wait(400);
-  eq(JSON.parse(window.__STORE__).settings.strikeExpired, false, '开关写入同步数据');
-  ok(!byId(expired.id).querySelector('.cd-item-name--done'), '关掉后名称不再划掉');
-  eq(byId(expired.id).querySelector('.cd-tag').textContent, '过期的倒数日', '标签仍标明过期（标签不受删除线开关影响）');
+  eq($('#sStrike'), null, '设置里已没有删除线开关');
+  ok($('#cdSetLayer').textContent.indexOf('删除线') === -1, '设置面板不再出现删除线文案');
+  const setLabels = [].map.call(document.querySelectorAll('#cdSetLayer .cd-label'), (n) => n.textContent.trim());
+  ok(setLabels.indexOf('显示') === -1, '「显示」分组随开关一并移除（现存分组：' + setLabels.join(' / ') + '）');
+  $('#cdSetClose').click();
+  await wait(420);
+  eq(JSON.parse(window.__STORE__).settings.strikeExpired, undefined, '旧字段不再写回同步数据');
+  ok(!!byId(expired.id).querySelector('.cd-item-name--done span'), '无需设置，过期倒数日默认带删除线');
+  eq(byId(expired.id).querySelector('.cd-tag').textContent, '过期的倒数日', '标签仍标明过期');
   ok(!!byId(expired.id), '条目本身还在');
 
-  $('#sStrike').click();
-  await wait(400);
-  ok(!!byId(expired.id).querySelector('.cd-item-name--done span'), '重新打开后恢复删除线');
-  eq(JSON.parse(window.__STORE__).settings.strikeExpired, true, '开关值可恢复');
+  // 打开了「过期后重新开始倒数」的倒数日不算过期，不划线
+  $('#cdAdd').click();
+  await wait(150);
+  document.querySelector('#fKind button[data-v="countdown"]').click();
+  await wait(60);
+  eq($('#fRepeat').checked, true, '新建倒数日默认开启重复');
+  $('#fTitle').value = '每年年会';
+  $('#fDate').value = '2025-01-01';
+  $('#fDate').dispatchEvent(new window.Event('change'));
+  await wait(40);
+  $('#cdSave').click();
+  await wait(450);
+  const repeatEv = JSON.parse(window.__STORE__).events.filter((e) => e.title === '每年年会')[0];
+  ok(!!repeatEv && repeatEv.repeat === true, '重复倒数日已保存');
+  ok(!byId(repeatEv.id).querySelector('.cd-item-name--done'), '开启了重复的过期日期不加删除线');
+  eq(byId(repeatEv.id).querySelector('.cd-item-num i').textContent, '剩余天数', '重复倒数日按剩余天数显示');
+
   // 生日/纪念日/节日不受影响
   ok(!document.querySelector('.cd-item[data-id="b2"] .cd-item-name--done'), '生日不加删除线');
   eq(document.querySelector('.cd-item[data-id="b2"] .cd-tag').textContent, '生日', '生日的标签不变');
-  $('#cdSetClose').click();
-  await wait(420);
 
   console.log('[20] 清除数据缓存（二次确认）');
   {

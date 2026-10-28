@@ -154,8 +154,6 @@
         ? t('sheet.edit')
         : t('sheet.new', { k: kindLower(k) });
     }
-    var hint = $('#sLangHint');
-    if (hint) hint.textContent = t('lang.hint');
   }
 
   /** 用户切换语言：写进同步数据，让任务投影用同一种语言 */
@@ -334,7 +332,10 @@
       return {
         ev: ev,
         occ: occ,
-        years: Core.yearsSince(ev, occ),
+        // 纪念日看「今天已满几年 + 零头天数」，其余看「下次发生那天是第几年」
+        span: ev.kind === 'anniversary'
+          ? Core.anniversarySpan(ev, today)
+          : null,
         metric: metricOf(ev, occ, today),
         label: Core.dateLabel(ev, occ),
         // 生日括号里放「这次生日多少岁」，不是今天多大
@@ -355,11 +356,12 @@
     });
   }
 
+  /** 纪念日：已满整年 + 零头天数（「1 周年 34 天」）；不满一年返回空，只显示已过天数 */
   function ageText(r) {
-    if (!r.years) return '';
-    // 生日的年龄已并入名称，这里只处理纪念日
-    if (r.ev.kind === 'anniversary') return t('years.n', { n: r.years });
-    return '';
+    if (r.ev.kind !== 'anniversary' || !r.span) return '';
+    return r.span.days > 0
+      ? t('years.nDays', { n: r.span.years, d: r.span.days })
+      : t('years.n', { n: r.span.years });
   }
 
   /** 名称（生日带年龄，如「我妈生日（55岁）」） */
@@ -477,16 +479,14 @@
     el.innerHTML = html;
   }
 
-  /** 倒数日已经过期（关掉了「过期后重新开始倒数」，且日期已经过去） */
+  /**
+   * 倒数日已经过期（关掉了「过期后重新开始倒数」，且日期已经过去）。
+   * 过期即视为这件事已经结束，名称一律划掉，不再提供开关；
+   * 打开了「过期后重新开始倒数」的倒数日永远算在剩余里（mode 为 remaining），
+   * 不会走到这里，所以也不会被划掉。
+   */
   function isExpiredCountdown(ev, m) {
     return ev.kind === 'countdown' && m.mode === 'elapsed';
-  }
-
-  /** 过期倒数日是否要划掉名称，取决于设置 */
-  function isDoneCountdown(ev, m) {
-    if (!isExpiredCountdown(ev, m)) return false;
-    var st = state.data.settings || Core.emptySettings();
-    return st.strikeExpired !== false;
   }
 
   function itemHtml(r) {
@@ -495,7 +495,6 @@
     var rgb = hexToRgb(ev.color).join(',');
     var isToday = m.mode !== 'none' && m.days === 0;
     var expired = isExpiredCountdown(ev, m);
-    var done = isDoneCountdown(ev, m);
 
     var numText, unitText, numCls = '';
     if (m.mode === 'none') {
@@ -534,7 +533,7 @@
     return '<div class="cd-item' + (isToday ? ' is-today' : '') + '" data-id="' + esc(ev.id) + '"' +
         ' style="--cd-rc:' + rgb + '" role="button" tabindex="0">' +
         '<div class="cd-item-main">' +
-          '<div class="cd-item-title"><em' + (done ? ' class="cd-item-name--done"' : '') + '>' +
+          '<div class="cd-item-title"><em' + (expired ? ' class="cd-item-name--done"' : '') + '>' +
             '<span>' + esc(r.name) + '</span>' +
             '</em>' + bell + tag + '</div>' +
           '<div class="cd-item-sub">' + esc(sub) + '</div>' +
@@ -1054,7 +1053,6 @@
   function refreshSettingsForm() {
     var st = state.data.settings || Core.emptySettings();
     $('#sHero').checked = st.hero !== false;
-    $('#sStrike').checked = st.strikeExpired !== false;
     setSeg('#sLang', st.lang || 'auto');
 
     var events = state.data.events || [];
@@ -1068,8 +1066,7 @@
     var ver = meta ? (meta.getAttribute('content') || '') : '';
     $('#sAbout').textContent = t('about', {
       name: t('appName'),
-      ver: ver || '-',
-      p: st.taskProject
+      ver: ver || '-'
     });
   }
 
@@ -1557,9 +1554,6 @@
     });
     $('#sHero').addEventListener('change', function () {
       updateSetting('hero', this.checked);
-    });
-    $('#sStrike').addEventListener('change', function () {
-      updateSetting('strikeExpired', this.checked);
     });
     $('#sClear').addEventListener('click', function () {
       askClearData();

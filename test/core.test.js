@@ -279,10 +279,9 @@ const oldShape = Core.normalize({
 eq(oldShape.events[0].remind.task, true, '旧 on 被忽略，按缺省加入任务列表');
 eq(oldShape.events[0].remind.snack, false, '旧 on 不会打开提示条');
 eq(oldShape.events[0].remind.offsets.join(','), '0,3', '合法档位仍被保留');
-eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,strikeExpired,taskProject', 'settings 只有语言、项目名与两个显示开关');
+eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,taskProject', 'settings 只有语言、项目名与置顶开关');
 eq(oldShape.settings.hero, true, '缺省开启置顶卡片');
-eq(oldShape.settings.strikeExpired, true, '缺省给过期倒数日加删除线');
-eq(Core.normalize({ settings: { strikeExpired: false } }).settings.strikeExpired, false, '删除线开关可关闭');
+eq('strikeExpired' in Core.normalize({ settings: { strikeExpired: false } }).settings, false, '删除线开关已移除，旧字段不落库');
 eq(Core.normalize({ settings: { hero: false } }).settings.hero, false, '关闭置顶被保留');
 eq(Core.normalize({}).settings.hero, true, '没有 settings 时默认开启');
 eq(Core.emptyData().version, 6, '数据版本 6（不兼容旧版本）');
@@ -439,6 +438,29 @@ eq(Core.parseYMD(''), null, '空字符串返回 null');
 eq(Core.ymd(Core.parseYMD('2028-02-29')), '2028-02-29', '闰年 2 月 29 日有效');
 eq(Core.ymd(Core.parseYMD(' 2026-12-01 ')), '2026-12-01', '首尾空格被容忍');
 eq(Core.ymd(Core.parseYMD('2026-1-1')), '2026-01-01', '单位数月日被规范化');
+
+// 纪念日周年：按「今天已满几个整年」，不满一年不显示
+console.log('[N] 纪念日周年数');
+const annEv = (o) => mk(Object.assign({ kind: 'anniversary' }, o));
+eq(Core.anniversaryYears(annEv({ date: '2025-09-22' }), TODAY), 1, '1 年 34 天 → 1 周年（不是 2）');
+eq(Core.anniversaryYears(annEv({ date: '2018-06-16' }), TODAY), 8, '2018-06-16 → 8 周年');
+eq(Core.anniversaryYears(annEv({ date: '2026-09-22' }), TODAY), null, '差 34 天不满一年 → 不显示');
+eq(Core.anniversaryYears(annEv({ date: '2026-10-26' }), TODAY), null, '当天 → 0 周年不显示');
+eq(Core.anniversaryYears(annEv({ date: '2025-10-27' }), TODAY), null, '差一天满一年 → 不显示');
+eq(Core.anniversaryYears(annEv({ date: '2024-10-26' }), TODAY), 2, '整两年的当天 → 2 周年');
+eq(JSON.stringify(Core.anniversarySpan(annEv({ date: '2025-09-22' }), TODAY)), '{"years":1,"days":34}', '1 周年 34 天');
+eq(JSON.stringify(Core.anniversarySpan(annEv({ date: '2024-10-26' }), TODAY)), '{"years":2,"days":0}', '整周年当天零头为 0');
+eq(JSON.stringify(Core.anniversarySpan(annEv({ date: '2024-02-29' }), TODAY)), '{"years":2,"days":240}', '2 月 29 日按 2 月 28 日过，零头照算');
+eq(Core.anniversarySpan(annEv({ date: '2026-09-22' }), TODAY), null, '不满一年没有整年与零头');
+const annLunar = annEv({
+  calendar: 'lunar', date: '2025-09-22',
+  lunar: { year: 2025, month: 9, day: 1, isLeap: false }
+});
+eq(Core.anniversaryYears(annLunar, TODAY), 1, '农历纪念日：农历年差满一年');
+eq(JSON.stringify(Core.anniversarySpan(annLunar, TODAY)), '{"years":1,"days":16}', '农历纪念日：零头按农历周年那天算');
+eq(Core.anniversaryYears(Object.assign({}, annLunar, {
+  lunar: { year: 2025, month: 9, day: 20, isLeap: false }
+}), TODAY), null, '农历纪念日：还没到农历同一天');
 
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

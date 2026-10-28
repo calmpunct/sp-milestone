@@ -24,7 +24,7 @@
     /* ---------------- identity ---------------- */
     appName: "Milestones",
     projectDefault: "Milestones",
-    about: "{name} v{ver} · reminders go to \"{p}\" · synced",
+    about: "{name} v{ver}",
 
     /* ---------------- kinds ---------------- */
     'kind.birthday': "Birthday",
@@ -60,6 +60,7 @@
     // age in the suffix = how old the person turns on the upcoming birthday, not today's age
     'age.suffix': " (turning {n})",
     'years.n': "{n} years",
+    'years.nDays': "{n} years {d} days",
     'zodiac.label': "{gz} year · {z}",
 
     /* ---------------- preset festivals ---------------- */
@@ -107,7 +108,6 @@
     filterAria: "Filter",
     lang: "Language",
     'lang.auto': "Auto",
-    'lang.hint': "\"Auto\" follows the app language; you can also pin one here. The choice syncs with your data and reminder tasks use it too.",
     'nav.reloadHint': "The sidebar entry becomes \"{name}\" after a restart",
     'nav.reload': "Restart",
 
@@ -218,14 +218,9 @@
     'set.hero': "Featured card",
     'set.heroToggle': "Enlarge the first entry",
     'set.heroHint': "Enlarges the first entry of <b>the current category</b>; when off the list starts at the top.",
-    'set.display': "Display",
-    'set.strike': "Strike through expired countdowns",
-    'set.strikeHint': "Only <b>expired countdowns that do not restart</b> get the line through their name. Other types are unaffected.",
     'set.data': "Data",
     'set.clear': "Clear Milestones data cache",
     'set.clearHint': "For wrong data, duplicate tasks or bad dates. Clears every entry and setting and removes this plugin's tasks — <b>other tasks stay</b>.",
-    'set.legend': "Legend",
-    'set.legendHint': "Countdowns and birthdays show <b>days left</b>, anniversaries <b>days passed</b>. Sooner first, older first.",
     'set.about': "About",
     'data.count': "{n} entries in total",
     'data.archivedN': " ({n} archived)",

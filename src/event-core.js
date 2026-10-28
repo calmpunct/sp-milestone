@@ -190,8 +190,6 @@
       taskProject: I.t('projectDefault'),
       // 顶部是否放大显示当前分区的第一条
       hero: true,
-      // 倒数日过期后，名称是否加删除线
-      strikeExpired: true,
       // 语言偏好：auto 跟随系统，或强制 zh / en
       lang: 'auto'
     };
@@ -212,7 +210,6 @@
         data.settings.taskProject = s.taskProject.trim().slice(0, 40);
       }
       data.settings.hero = s.hero !== false;
-      data.settings.strikeExpired = s.strikeExpired !== false;
       // 语言：只认 auto / zh / en，其余一律回到 auto（跟随系统）
       data.settings.lang = s.lang === 'en' || s.lang === 'zh' ? s.lang : 'auto';
     }
@@ -433,6 +430,47 @@
     if (!base) return null;
     var n2 = occ.date.getFullYear() - base.getFullYear();
     return n2 > 0 ? n2 : null;
+  }
+
+  /**
+   * 纪念日截至 today 的「已满整年 + 零头天数」，不满一年返回 null
+   * 例：2025-09-24 开始，到 2026-10-28 → { years: 1, days: 34 }
+   * 与 yearsSince 的区别：yearsSince 算的是「下次发生那天是第几年」，
+   * 纪念日要的是「今天已经过了几个整年」，下次发生日永远比已过的周年多一年
+   * @returns {{years:number, days:number}|null}
+   */
+  function anniversarySpan(ev, when) {
+    var w = startOfDay(when || new Date());
+    var n, mark;
+
+    if (ev.calendar === 'lunar' && ev.lunar) {
+      var lw = Lunar.solarToLunar(w);
+      n = lw.year - ev.lunar.year;
+      var beforeDay = lw.month < ev.lunar.month ||
+        (lw.month === ev.lunar.month && lw.day < ev.lunar.day);
+      if (beforeDay) n--;
+      if (n < 1) return null;
+      // 第 n 个农历周年那天，零头天数从那天算到今天
+      mark = resolveLunar(ev.lunar.year + n, ev.lunar.month, ev.lunar.day, ev.lunar.isLeap, 'regular');
+    } else {
+      var base = parseYMD(ev.date);
+      if (!base) return null;
+      n = w.getFullYear() - base.getFullYear();
+      var notYet = w.getMonth() < base.getMonth() ||
+        (w.getMonth() === base.getMonth() && w.getDate() < base.getDate());
+      if (notYet) n--;
+      if (n < 1) return null;
+      mark = safeYM(base.getFullYear() + n, base.getMonth(), base.getDate());
+    }
+
+    if (!mark) return { years: n, days: 0 };
+    return { years: n, days: Math.max(0, diffDays(mark, w)) };
+  }
+
+  /** 纪念日已满多少整年，不满一年返回 null */
+  function anniversaryYears(ev, when) {
+    var span = anniversarySpan(ev, when);
+    return span ? span.years : null;
   }
 
   /**
@@ -685,6 +723,8 @@
     resolveLunar: resolveLunar,
     lunarToSolarOf: lunarToSolarOf,
     yearsSince: yearsSince,
+    anniversarySpan: anniversarySpan,
+    anniversaryYears: anniversaryYears,
     ageOn: ageOn,
     ageAt: ageAt,
     titleOf: titleOf,
