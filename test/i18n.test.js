@@ -111,6 +111,11 @@ eq(I.resolve('auto', 'de'), 'en', '自动 + 未支持的语言 -> 英文兜底')
 eq(I.resolve(null, 'zh-TW'), 'zh', '没有偏好时按宿主语言（地区码归一）');
 eq(I.resolve('fr', 'zh'), 'zh', '偏好的语言没装 -> 回落到宿主语言');
 eq(I.resolve('auto', ''), 'en', '什么都拿不到 -> 英文兜底');
+// 宿主给的语言形态不止一种：字符串带地区码、{ code: ... } 对象、大小写混写都要认
+eq(I.resolve('zh-CN', 'en'), 'zh', '偏好带地区码也能命中');
+eq(I.resolve('auto', { code: 'zh-TW' }), 'zh', '宿主给 { code } 结构也能归一');
+eq(I.resolve('auto', 'EN-us'), 'en', '大小写不敏感');
+eq(I.resolve(null, { code: 'en-US' }), 'en', '没有偏好时按宿主的 { code } 解析');
 
 console.log('[5] 取词与回落');
 I.setLang('en');

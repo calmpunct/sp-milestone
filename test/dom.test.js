@@ -19,7 +19,10 @@ function ok(c, label) { if (!c) { fail++; console.log(`  ✗ ${label}`); } }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms || 60));
 
 const TODAY = new Date();
-const todayStr = Core.ymd(TODAY);
+// 种子里凡是「今天」「昨天」都按运行当天现算：写死日期的话，隔一天再跑就会红（历史问题）
+const pad2 = (n) => (n < 10 ? '0' + n : '' + n);
+const TODAY_MD = pad2(TODAY.getMonth() + 1) + '-' + pad2(TODAY.getDate());   // MM-DD
+const YESTERDAY = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() - 1);
 
 const SEED = {
   version: 1,
@@ -28,13 +31,14 @@ const SEED = {
   events: [
     { id: 'b1', title: '妈妈生日', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
       lunar: { year: 1968, month: 4, day: 18, isLeap: false }, repeat: true, color: '#d6336c', note: '' },
-    { id: 'b2', title: '小米生日', kind: 'birthday', calendar: 'solar', date: '2019-10-26',
+    // 出生年取闰年 2000，这样 2 月 29 日运行时这个日期也成立
+    { id: 'b2', title: '小米生日', kind: 'birthday', calendar: 'solar', date: '2000-' + TODAY_MD,
       repeat: true, color: '#f59f00', note: '' },
     { id: 'b3', title: '结婚纪念日', kind: 'anniversary', calendar: 'solar', date: '2018-06-16',
       repeat: true, color: '#c92a2a', note: '' },
     { id: 'b4', title: '项目上线', kind: 'countdown', calendar: 'solar', date: '2026-12-01',
       repeat: false, color: '#1c7ed6', note: '' },
-    { id: 'b5', title: '今天的事', kind: 'anniversary', calendar: 'solar', date: todayStr,
+    { id: 'b5', title: '昨天的事', kind: 'anniversary', calendar: 'solar', date: Core.ymd(YESTERDAY),
       repeat: true, color: '#0ca678', note: '' },
     { id: 'b6', title: '<img src=x onerror=alert(1)>恶意', kind: 'countdown', calendar: 'solar',
       date: '2027-05-05', repeat: false, color: '#5c7cfa', note: '' }
@@ -763,7 +767,61 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     dom3.window.close();
   }
 
-  console.log('[22] 无运行时错误');
+  console.log('[22] 真实宿主形状：cfg 里没有 lang，只有 getCurrentLanguage() + 钩子载荷');
+  {
+    // Super Productivity 19.x 的 PluginAPI.cfg 是 { theme, appVersion, platform, isDev }，
+    // 语言只能通过 getCurrentLanguage() 拿到；切语言靠 languageChange 载荷。之前只读 cfg.lang，
+    // 结果「自动」永远跟着系统语言走 —— 这条用例守住那个回归。
+    const seed = {
+      version: 6,
+      settings: { lang: 'auto', taskProject: 'Milestones', hero: true },
+      events: [{ id: 'g1', title: 'Mom birthday', kind: 'birthday', calendar: 'solar',
+        date: '1990-05-12', repeat: true, color: '#d6336c', note: '' }]
+    };
+    const hooks = {};
+    let hostLang = 'en';
+    const dom4 = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(w4) {
+        w4.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w4.PluginAPI = {
+          cfg: { theme: 'light', appVersion: '19.3.1', platform: 'desktop', isDev: false },
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          getCurrentLanguage() { return hostLang; },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook(k, fn) { hooks[k] = fn; },
+          showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(JSON.stringify(seed)); },
+          persistDataSynced() { return Promise.resolve(); },
+          openDialog() { return Promise.resolve('Cancel'); }
+        };
+      }
+    });
+    const d4 = dom4.window.document;
+    const $4 = (s) => d4.querySelector(s);
+    await new Promise((r) => setTimeout(r, 300));
+
+    eq($4('.cd-title').textContent, 'Milestones', '自动模式按 getCurrentLanguage() 取英文');
+
+    // 软件里切成中文：载荷是 { code, newLanguage }，插件要立刻跟着变
+    hostLang = 'zh';
+    hooks.languageChange && hooks.languageChange({ code: 'zh', newLanguage: 'zh' });
+    await new Promise((r) => setTimeout(r, 200));
+    eq($4('.cd-title').textContent, '里程碑', '切语言后界面立刻跟随（不依赖 cfg.lang）');
+    eq($4('.cd-chip[data-f="all"]').textContent, '全部', '筛选条跟着切中文');
+
+    // 再切回英文
+    hostLang = 'en';
+    hooks.languageChange && hooks.languageChange({ newLanguage: 'en' });
+    await new Promise((r) => setTimeout(r, 200));
+    eq($4('.cd-title').textContent, 'Milestones', '再切回英文同样生效');
+    dom4.window.close();
+  }
+
+  console.log('[23] 无运行时错误');
   eq(errors.length, 0, '控制台无报错' + (errors.length ? '：\n     ' + errors.join('\n     ') : ''));
 
   console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);

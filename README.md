@@ -30,7 +30,7 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 
 1. Open Super Productivity → `Settings` → `Plugins`
 2. Click `Choose Plugin File`
-3. Select `releases/plugin-milestone-v2.7.0.zip`
+3. Select `releases/sp-milestone-v1.0.0.zip`
 4. After installing, a "Milestones" entry appears in the left navigation
 
 > No need to unzip. The web version cannot download automatically because of browser CORS rules — download the ZIP manually and install it the same way.
@@ -207,9 +207,10 @@ You can keep creating entries right away; no reinstall needed.
 
 ## Internationalization
 
-- **The plugin follows the language you set in Super Productivity.** Resolution order: the language chosen inside the plugin → the app language (`PluginAPI.cfg.lang`) → the system language → English as a last resort
+- **The plugin follows the language you set in Super Productivity.** Resolution order: the language chosen inside the plugin → the app language (`PluginAPI.getCurrentLanguage()`, falling back to `cfg.lang` and the `languageChange` payload) → the system language → English as a last resort
 - In **Settings → Language** you can keep "Auto" (follow the app) or pin a specific language. The choice is stored in the synced data, so it travels with your devices
 - When you switch the app language, the plugin UI re-renders immediately (the `languageChange` hook) and the reminder tasks are regenerated in the new language on the next reconciliation
+- **One exception: the left-navigation entry.** Its label is a string handed to the host at registration time and Super Productivity exposes no API to rename a registered entry (re-registering would simply add a second entry). The label is therefore taken in the language active when the plugin loads; switching the app language at runtime shows a one-tap **Restart** prompt, and after a restart the label matches again
 - Task titles and notes are generated in the active language, including lunar dates, festival names, weekdays, the sexagenary cycle and zodiac
 - Adding a language never touches the UI code — see below
 
@@ -259,14 +260,14 @@ Platform differences are deliberately avoided: the UI is an iframe full-page vie
 ```bash
 npm install        # jsdom is only needed for tests
 npm run build      # writes dist/ and releases/*.zip, refreshes preview/demo.html
-npm test           # lunar + core + i18n + minify fidelity + DOM + task projection + host scheduling + static checks
+npm test           # lunar + core + i18n + DOM + task projection + host scheduling + static checks
 npm run test:i18n  # locale completeness / placeholder / priority checks
 npm run demo       # open the preview page in a browser
 ```
 
-**About size**: `index.html` must be self-contained (styles and scripts inlined — the mobile client loads it as a whole document in a native WebView, with no module channel available), so the build strips comments, collapses whitespace in the inlined CSS / JS and trims the HTML skeleton: no identifier renaming, no risky line joining (a newline is only dropped after `; , { ( [ :`, where it can never be an ASI boundary), and the result is re-parsed by V8 before it is written.
+**About size**: `index.html` must be self-contained (styles and scripts inlined — iframe plugins are served through `srcdoc`, and arbitrary extra files from the ZIP are not served to the iframe), so the build concatenates the sources into one page. Nothing is minified: each section keeps its comments and indentation behind a `/* ===== src/<file> ===== */` banner, so you can open `dist/index.html` and read it like the source. The only hard limit is 1024 KB (the build fails beyond that, and warns from 768 KB).
 
-Language packs stay one file per language in `src/locales/`, but the build merges them into a single "key → per-language values" payload so a key name is stored once. Splitting them out cost only ~0.4 KB, which is why the per-file layout was kept. Current build: `index.html` 97.4 KB, `plugin.js` 55.1 KB, ZIP 48.2 KB; each additional language costs roughly 5 KB. The build warns above 100 KB and hard-fails above 160 KB — the upstream docs define no per-file limit (only a 10 MB ZIP cap for the community listing), so 100 KB is a self-imposed budget, not a host limit. `BUILD_MINIFY=0 npm run build` produces a readable build for debugging.
+Language packs stay one file per language in `src/locales/`, but the build merges them into a single "key → per-language values" payload so a key name is stored once. Current build: `index.html` 140.7 KB, `plugin.js` 87.7 KB, ZIP 70.5 KB.
 
 Source layout:
 
@@ -284,7 +285,7 @@ src/
 ├── manifest.json   plugin manifest
 └── icon.svg        icon
 build.js            zero-dependency bundler (with a minimal ZIP writer)
-test/               eight test suites
+test/               seven test suites
 ```
 
 ### Naming conventions
@@ -293,13 +294,13 @@ One project, one machine identifier; every other name derives from it:
 
 | Purpose | Value | Source |
 | --- | --- | --- |
-| Machine id (`manifest.id`) | `plugin-milestone` | single source of truth |
-| Package file name | `plugin-milestone-v<version>.zip` | `manifest.id` + `manifest.version` |
-| `package.json` name | `plugin-milestone` | must equal `manifest.id` |
+| Machine id (`manifest.id`) | `milestone` | single source of truth |
+| Project name (`package.json` name) | `sp-milestone` | `sp-` + `manifest.id` |
+| Package file name | `sp-milestone-v<version>.zip` | project name + `manifest.version` |
 | Display name (nav, title) | 里程碑 / Milestones | language pack `appName` |
 | Default reminder project | 里程碑提醒 / Milestones | language pack `projectDefault` |
 
-`npm run build` validates that `package.json` name / version match `manifest.json` and fails otherwise.
+`npm run build` validates that `package.json` name equals `sp-<manifest.id>` and that both versions match; anything else fails the build.
 
 > There is also an internal `cd-` prefix (CSS classes, CSS variables, `localStorage` keys, `data-cd-theme`). It stands for **c**ount**d**own and is only a UI namespace, unrelated to the plugin identity. Renaming it would touch 700+ places with no functional gain, so it stays.
 
@@ -315,12 +316,12 @@ Open a PR against the upstream `src/assets/community-plugins.json` adding:
 {
   "name": "里程碑 / Milestones",
   "shortDescription": "Countdowns, anniversaries, birthdays and festivals with lunar presets and cross-device sync. / 倒数日、纪念日、生日与节日管理，内置农历节日预设，支持跨设备同步与中英双语。",
-  "url": "https://github.com/<you>/plugin-milestone",
+  "url": "https://github.com/<you>/sp-milestone",
   "author": "<you>",
-  "id": "plugin-milestone",
+  "id": "milestone",
   "release": {
-    "version": "2.7.0",
-    "downloadUrl": "https://github.com/<you>/plugin-milestone/releases/download/v2.7.0/plugin-milestone-v2.7.0.zip",
+    "version": "1.0.0",
+    "downloadUrl": "https://github.com/<you>/sp-milestone/releases/download/v1.0.0/sp-milestone-v1.0.0.zip",
     "sha256": "<从 node build.js 输出复制>"
   }
 }
@@ -362,7 +363,7 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，**�
 
 1. 打开 Super Productivity → `设置` → `插件`
 2. 点击 `Choose Plugin File`（选择插件文件）
-3. 选中 `releases/plugin-milestone-v2.7.0.zip`
+3. 选中 `releases/sp-milestone-v1.0.0.zip`
 4. 安装后，左侧导航出现「里程碑」入口
 
 > 不需要解压 ZIP。网页版因浏览器跨域限制无法自动下载，请手动下载 ZIP 后用同样方式安装。
@@ -538,9 +539,10 @@ cd:ev=e1;cy=2027-05-14
 
 ## 国际化
 
-- **默认跟随 Super Productivity 里设定的语言**。优先级：插件内选择的语言 → 软件语言（`PluginAPI.cfg.lang`）→ 系统语言 → 英文兜底
+- **默认跟随 Super Productivity 里设定的语言**。优先级：插件内选择的语言 → 软件语言（`PluginAPI.getCurrentLanguage()`，拿不到再看 `cfg.lang` 与 `languageChange` 载荷）→ 系统语言 → 英文兜底
 - 设置面板的「语言」里可以保持「自动」（跟随软件），也可以固定成某个语言。选择存在同步数据里，跟着账号走到其它设备
 - 在软件里切换语言时，插件界面会立刻重排（`languageChange` 钩子），提醒任务在下一次对账时用新语言重新生成
+- **唯一的例外是左侧导航入口名称**：它是注册时交给宿主的一个字符串，而宿主没有「改已注册入口名称」的接口（重复注册只会多出一条入口）。所以名称取的是插件加载时生效的语言；运行时切语言会弹一次「重启」提示，重启后名称即跟上
 - 任务标题与备注都用当前语言生成，包括农历日期、节日名、星期、干支与生肖
 
 ### 贡献翻译
@@ -563,7 +565,7 @@ src/locales/
 - `{name}`、`{n}`、`{date}` 这类占位符要原样保留，不能增删
 - `set.heroHint`、`set.strikeHint`、`set.clearHint`、`set.legendHint` 与置顶卡片的两条文案里可能含 `<b>` 标签，且**只支持** `<b>`：其余标签与属性在渲染时会被剔除，语言包无法注入脚本
 - 复数在 `plural.*`；`kindl.*` 是句子里的全小写形式，`kind.*` 是标签用的首字母大写形式
-- 每多一种语言，`index.html` 约增加 5KB；超过 100KB 预算时构建会警告
+- 每多一种语言，`index.html` 约增加 9KB；768KB 起构建会警告，1024KB 直接失败
 
 ## 平台支持
 
@@ -591,14 +593,14 @@ src/locales/
 ```bash
 npm install        # 只有测试需要 jsdom
 npm run build      # 生成 dist/ 与 releases/*.zip，并更新 preview/demo.html
-npm test           # 农历 + 业务逻辑 + 国际化 + 压缩保真 + DOM 交互 + 任务投影 + 宿主调度 + 静态检查
+npm test           # 农历 + 业务逻辑 + 国际化 + DOM 交互 + 任务投影 + 宿主调度 + 静态检查
 npm run test:i18n  # 语言包完整性 / 占位符 / 语言优先级
 npm run demo       # 在浏览器中打开预览页
 ```
 
-**关于体积**：`index.html` 必须是自包含文档（样式与脚本都内联，不能 `<script src>`——移动端是原生 WebView 整页加载，没有可用的模块通道），所以构建时会对内联的 CSS / JS 做「删注释 + 压空白」，并顺带压缩 HTML 骨架：不改标识符；换行只在 `; , { ( [ :` 之后才合并（这些位置不可能是 ASI 边界），写盘前再用 V8 重新解析校验。
+**关于体积**：`index.html` 必须是自包含文档（iframe 插件走 `srcdoc` 加载，ZIP 里的其它文件不会被 serve 给 iframe），所以构建把源码原样拼成单页：**不做任何压缩**，每段前面带 `/* ===== src/<file> ===== */` 来源横幅，注释与缩进全部保留 —— 出问题直接打开 `dist/index.html` 当源码读。硬上限 1024KB（超过直接构建失败），768KB 开始警告。
 
-语言包仍然一种语言一个文件（`src/locales/`），但构建时会被合成「键 → 各语言值」的列式结构，键名只存一份。实测拆成独立文件只比合成单表多 0.4KB，所以保留了这种更好贡献的结构。当前产物：`index.html` 97.4 KB、`plugin.js` 55.1 KB、安装包 48.2 KB；每多一种语言约 +5KB。2.7.0 起构建在超过 100KB 时警告、超过 160KB 时失败——上游文档并没有单文件 100KB 的限制（只有社区清单 10MB 的 ZIP 上限），所以 100KB 是本项目的体验预算，不是宿主硬限。排查线上问题时想要可读版本：`BUILD_MINIFY=0 npm run build`。
+语言包仍然一种语言一个文件（`src/locales/`），但构建时会被合成「键 → 各语言值」的列式结构，键名只存一份。当前产物：`index.html` 140.7 KB、`plugin.js` 87.7 KB、安装包 70.5 KB。
 
 源码结构：
 
@@ -625,13 +627,13 @@ test/               八组测试
 
 | 用途 | 值 | 来源 |
 | --- | --- | --- |
-| 机器标识（`manifest.id`） | `plugin-milestone` | 唯一真源 |
-| 安装包文件名 | `plugin-milestone-v<版本>.zip` | `manifest.id` + `manifest.version` |
-| `package.json` 的 `name` | `plugin-milestone` | 必须与 `manifest.id` 相同 |
+| 机器标识（`manifest.id`） | `milestone` | 唯一真源 |
+| 项目名（`package.json` 的 `name`） | `sp-milestone` | `sp-` + `manifest.id` |
+| 安装包文件名 | `sp-milestone-v<版本>.zip` | 项目名 + `manifest.version` |
 | 显示名（左侧导航、标题） | 里程碑 / Milestones | 语言包 `appName` |
 | 提醒任务默认项目名 | 里程碑提醒 / Milestones | 语言包 `projectDefault` |
 
-`npm run build` 会先校验 `package.json` 的 `name` / `version` 与 `manifest.json` 一致，不一致直接失败。
+`npm run build` 会先校验 `package.json` 的 `name` 等于 `sp-<manifest.id>`、且版本与 `manifest.json` 相同，不一致直接失败。
 
 > 内部还有一层 `cd-` 前缀（CSS 类名、CSS 变量、`localStorage` 键、`data-cd-theme`）。它是 **c**ount**d**own 的缩写，属于界面命名空间，与上面的身份无关。
 
@@ -645,12 +647,12 @@ test/               八组测试
 {
   "name": "里程碑 / Milestones",
   "shortDescription": "Countdowns, anniversaries, birthdays and festivals with lunar presets and cross-device sync. / 倒数日、纪念日、生日与节日管理，内置农历节日预设，支持跨设备同步与中英双语。",
-  "url": "https://github.com/<you>/plugin-milestone",
+  "url": "https://github.com/<you>/sp-milestone",
   "author": "<you>",
-  "id": "plugin-milestone",
+  "id": "milestone",
   "release": {
-    "version": "2.7.0",
-    "downloadUrl": "https://github.com/<you>/plugin-milestone/releases/download/v2.7.0/plugin-milestone-v2.7.0.zip",
+    "version": "1.0.0",
+    "downloadUrl": "https://github.com/<you>/sp-milestone/releases/download/v1.0.0/sp-milestone-v1.0.0.zip",
     "sha256": "<从 node build.js 输出复制>"
   }
 }

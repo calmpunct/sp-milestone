@@ -96,17 +96,19 @@ ok(Array.isArray(manifest.hooks), 'hooks 是数组');
 ok(manifest.icon && fs.existsSync(path.join(ROOT, 'src', manifest.icon)), '图标文件存在');
 ok(/^\d+\.\d+\.\d+$/.test(manifest.version), '版本号为数字格式');
 
-// 命名唯一真源：安装包名、package.json、README 都从 manifest.id + version 派生，
-// 任何一处手写都会漂移（历史问题：package.json 停在 2.3.0，README 里写死 countdown-days-*.zip）
+// 命名唯一真源：项目名 = sp-<manifest.id>，安装包名 = 项目名 + 版本，README 里写的必须与构建派生的一致，
+// 任何一处手写都会漂移（历史问题：id 叫 countdown-days、项目名让 package.json 停在 2.3.0、README 写死旧包名）
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const readme = read('README.md');
-const zipName = manifest.id + '-v' + manifest.version + '.zip';
+const zipName = pkg.name + '-v' + manifest.version + '.zip';
 ok(/^[a-z0-9-]+$/.test(manifest.id), 'manifest.id 为 kebab-case', manifest.id);
-ok(pkg.name === manifest.id, 'package.json name 与 manifest.id 一致', pkg.name + ' vs ' + manifest.id);
+ok(pkg.name === 'sp-' + manifest.id, 'package.json name = sp-<manifest.id>', pkg.name + ' vs sp-' + manifest.id);
 ok(pkg.version === manifest.version, 'package.json 版本与清单一致', pkg.version + ' vs ' + manifest.version);
 ok(readme.includes(zipName), 'README 提到的安装包名与构建派生一致', zipName);
 ok(!/countdown-days/.test(readme), 'README 里不再残留旧标识 countdown-days');
+ok(!/plugin-milestone/.test(readme), 'README 里不再残留旧标识 plugin-milestone');
 ok(!/super-productivity-milestone/.test(readme), 'README 里不再残留旧仓库名');
+ok(manifest.isSkipMenuEntry === true, '清单关掉了宿主的自动菜单入口（避免与插件自注册的重复）');
 ok(new RegExp('<title[^>]*>' + manifest.name + '</title>').test(dist), '页面标题与清单显示名一致', manifest.name);
 
 // 代码里注册的钩子必须在清单中声明，否则宿主不会投递（曾漏掉 taskComplete/taskDelete）
@@ -149,18 +151,21 @@ const sizes = {};
 });
 const total = Object.keys(sizes).reduce((s, f) => s + sizes[f], 0);
 ok(total < 1024 * 1024, '产物体积 < 1MB', (total / 1024).toFixed(0) + ' KB');
-// 体积预算：100KB 是「该瘦身了」的警告线（语言包天然会吃掉几 KB），160KB 才是硬上限
-const SIZE_WARN = 100 * 1024;
-const SIZE_MAX = 160 * 1024;
-ok(sizes['index.html'] <= SIZE_MAX, 'index.html 不超过硬上限 160KB',
+// 预算常量只有 build.js 一份，这里引用它，避免两处数字各写一遍又慢慢漂移
+const { SIZE_WARN, SIZE_MAX } = require('../build.js');
+ok(sizes['index.html'] <= SIZE_MAX, 'index.html 不超过上限 ' + SIZE_MAX / 1024 + 'KB',
   (sizes['index.html'] / 1024).toFixed(1) + ' KB');
-ok(sizes['plugin.js'] <= SIZE_MAX, 'plugin.js 不超过硬上限 160KB',
+ok(sizes['plugin.js'] <= SIZE_MAX, 'plugin.js 不超过上限 ' + SIZE_MAX / 1024 + 'KB',
   (sizes['plugin.js'] / 1024).toFixed(1) + ' KB');
 if (sizes['index.html'] > SIZE_WARN) {
-  console.log(`     提示：index.html ${(sizes['index.html'] / 1024).toFixed(1)} KB 超过 ${SIZE_WARN / 1024}KB 预算（每多一种语言约 +5KB）`);
+  console.log(`     提示：index.html ${(sizes['index.html'] / 1024).toFixed(1)} KB 超过 ${SIZE_WARN / 1024}KB 警示线`);
 }
-ok(!/\n {2,}\S/.test(dist.match(/<script>([\s\S]*)<\/script>/)[1]),
-  '内联脚本已压缩（无行首缩进）');
+// 产物形态：可读优先 —— 内联的样式与脚本保留源码原样（注释、缩进），每段带来源横幅
+const inlineJs = dist.match(/<script>([\s\S]*)<\/script>/)[1];
+ok(inlineJs.includes('/* ===== src/event-core.js ===== */'), '内联脚本带来源横幅');
+ok(/\n {2,}\S/.test(inlineJs), '内联脚本保留源码缩进');
+ok(dist.includes('/* ===== src/styles.css ===== */'), '内联样式带来源横幅');
+ok(inlineJs.includes('语言优先级'), '内联脚本保留源码注释');
 console.log(`     产物合计 ${(total / 1024).toFixed(1)} KB（index ${(sizes['index.html'] / 1024).toFixed(1)} KB / plugin ${(sizes['plugin.js'] / 1024).toFixed(1)} KB）`);
 
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);

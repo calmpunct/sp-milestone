@@ -7,7 +7,7 @@
  *
  * 语言优先级：
  *   1. settings.lang（用户在插件里明确选的语言）
- *   2. 宿主应用的语言（PluginAPI.cfg.lang，即「软件设定的语言」）
+ *   2. 宿主应用的语言（PluginAPI.getCurrentLanguage()，老宿主退回 cfg.lang / languageChange 载荷）
  *   3. 系统语言（navigator.language）
  *   4. 英文（FALLBACK），再不行回落到基准语言
  */
@@ -66,8 +66,13 @@
     return REG;
   }
 
-  /** 语言代码归一：zh-CN / zh_TW -> zh */
+  /**
+   * 语言代码归一：zh-CN / zh_TW -> zh。
+   * 也接受宿主给的 { code: 'zh-CN' } 结构（老版本宿主的 PluginAPI.cfg.lang 就是这种形状），
+   * 免得调用方各自判断一遍。
+   */
   function normCode(code) {
+    if (code && typeof code === 'object') code = code.code || '';
     return String(code || '').toLowerCase().split(/[-_]/)[0];
   }
 
@@ -94,17 +99,16 @@
 
   /**
    * 语言偏好 -> 实际可用语言
-   * @param {string} pref auto / 具体语言代码
-   * @param {string} hostLang 宿主应用语言（PluginAPI.cfg.lang）或系统语言
+   * @param {string} pref auto / 具体语言代码（也容忍 zh-CN 这种带地区码的写法）
+   * @param {string|{code:string}} hostLang 宿主应用语言（getCurrentLanguage() / cfg.lang）
    */
   function resolve(pref, hostLang) {
     var R = reg();
-    if (pref && pref !== 'auto' && R[pref]) return pref;
+    var p = normCode(pref);
+    if (p && p !== 'auto' && R[p]) return p;
 
-    var host = String(hostLang || '');
+    var host = normCode(hostLang);
     if (host && R[host]) return host;
-    var primary = normCode(host);
-    if (primary && R[primary]) return primary;
 
     if (R[FALLBACK]) return FALLBACK;
     return BASE;

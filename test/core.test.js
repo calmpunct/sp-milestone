@@ -401,5 +401,44 @@ const festToday = {
 eq(Core.dueReminders([festToday], TODAY).length, 1, '节日当天提醒');
 eq(Core.hasReminder(festToday), true, '节日显示铃铛');
 
+// 19. 农历往返一致性 + 输入边界
+console.log('[11] 农历往返与边界');
+let rtBad = 0;
+let rtN = 0;
+for (let t = Date.UTC(1900, 0, 30); t <= Date.UTC(2100, 11, 31); t += 37 * 86400000) {
+  const u = new Date(t);
+  const solar = new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate());
+  const lu = L.solarToLunar(solar);
+  if (lu.outOfRange) continue;   // 支持范围之前的那几天
+  const back = L.lunarToSolar(lu.year, lu.month, lu.day, lu.isLeap);
+  if (!back || Core.ymd(back) !== Core.ymd(solar)) rtBad++;
+  rtN++;
+}
+console.log(`     抽样 ${rtN} 天`);
+eq(rtBad, 0, '公历 → 农历 → 公历 往返一致');
+
+let lmBad = 0;
+for (let y = 1900; y <= 2100; y += 7) {
+  for (let m = 1; m <= 12; m++) {
+    const dim = L.monthDays(y, m);
+    for (const dd of [1, 15, 29, 30]) {
+      const d = Core.resolveLunar(y, m, dd, false, 'regular');
+      if (!d) { lmBad++; continue; }
+      const back = L.solarToLunar(d);
+      // 小月没有三十时回落到廿九，其余情况必须原样落回当月同日
+      if (back.year !== y || back.month !== m || back.day !== Math.min(dd, dim)) lmBad++;
+    }
+  }
+}
+eq(lmBad, 0, '农历每月 1 / 15 / 29 / 30 都落在当月（小月回落到廿九）');
+
+eq(Core.parseYMD('2026-04-31'), null, '4 月 31 日不存在');
+eq(Core.parseYMD('2026-13-01'), null, '13 月不存在');
+eq(Core.parseYMD('abc'), null, '非日期字符串返回 null');
+eq(Core.parseYMD(''), null, '空字符串返回 null');
+eq(Core.ymd(Core.parseYMD('2028-02-29')), '2028-02-29', '闰年 2 月 29 日有效');
+eq(Core.ymd(Core.parseYMD(' 2026-12-01 ')), '2026-12-01', '首尾空格被容忍');
+eq(Core.ymd(Core.parseYMD('2026-1-1')), '2026-01-01', '单位数月日被规范化');
+
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

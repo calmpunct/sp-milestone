@@ -54,7 +54,7 @@ function boot(store, opts) {
   });
   const w = dom.window;
   const snacks = [];
-  const regs = { sidePanel: 0, menu: 0 };
+  const regs = { sidePanel: 0, menu: 0, sideLabel: '', menuLabel: '' };
   const calls = [];
 
   if (opts.reuse) {
@@ -66,12 +66,12 @@ function boot(store, opts) {
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   const api = {
-    Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', TASK_DELETE: 'taskDelete', TASK_COMPLETE: 'taskComplete' },
+    Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', TASK_DELETE: 'taskDelete', TASK_COMPLETE: 'taskComplete', LANGUAGE_CHANGE: 'languageChange' },
     hooks: {},
     onReady(fn) { fn(); },
     registerHook(name, fn) { api.hooks[name] = fn; },
-    registerSidePanelButton() { regs.sidePanel++; },
-    registerMenuEntry() { regs.menu++; },
+    registerSidePanelButton(cfg) { regs.sidePanel++; regs.sideLabel = cfg && cfg.label; },
+    registerMenuEntry(cfg) { regs.menu++; regs.menuLabel = cfg && cfg.label; },
     showIndexHtmlAsView() {},
     showSnack(cfg) { snacks.push(cfg.msg); },
     loadSyncedData() { return Promise.resolve(JSON.stringify(store)); },
@@ -110,6 +110,8 @@ function boot(store, opts) {
     }
   };
 
+  if (opts.lang) api.getCurrentLanguage = () => opts.lang;
+
   if (opts.noTaskApi) {
     delete api.getAppState;
     delete api.getTasks;
@@ -135,9 +137,41 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
 (async function run() {
   console.log('[1] 入口注册');
   {
-    const { regs } = boot(data([]));
+    const { regs } = boot(data([]), { lang: 'zh' });
     eq(regs.sidePanel, 1, '注册侧栏按钮');
     eq(regs.menu, 1, '注册菜单项');
+    eq(regs.menuLabel, '里程碑', '入口名称取宿主语言（中文）');
+  }
+
+  console.log('[1.1] 入口名称跟随软件语言');
+  {
+    // 宿主语言来自 getCurrentLanguage()（19.x 的 cfg 里没有 lang），入口名称按它取词
+    const en = boot(data([], { lang: 'auto' }), { lang: 'en' });
+    eq(en.regs.menuLabel, 'Milestones', '英文宿主注册英文入口名');
+    eq(en.regs.sideLabel, 'Milestones', '侧栏按钮同名');
+
+    // 插件里显式选了语言时，入口名按插件的选择走（而不是宿主语言）
+    const pinned = boot(data([], { lang: 'en' }), { lang: 'zh' });
+    await wait(80);
+    eq(pinned.regs.menuLabel, '里程碑', '入口名先按宿主语言占位（注册早于数据读取）');
+
+    // 运行时切语言：宿主没有改名接口 —— 不重复注册，改为提示重启
+    const run = boot(data([], { lang: 'auto' }), { lang: 'zh' });
+    await wait(60);
+    eq(run.regs.menu, 1, '只注册过一次');
+    run.api.getCurrentLanguage = () => 'en';   // 真实宿主里这个值随语言设置实时变化
+    run.api.hooks.languageChange({ code: 'en', newLanguage: 'en' });
+    await wait(60);
+    eq(run.regs.menu, 1, '切语言不重复注册（否则导航会多一个入口）');
+    eq(run.regs.sidePanel, 1, '侧栏按钮也不重复注册');
+    ok(run.snacks.some((m) => m && m.indexOf('Milestones') !== -1),
+      '提示条说明重启后名称变成 Milestones：' + JSON.stringify(run.snacks));
+    // 切回原语言：名称本来就对，不该再弹
+    const before = run.snacks.length;
+    run.api.getCurrentLanguage = () => 'zh';
+    run.api.hooks.languageChange({ code: 'zh', newLanguage: 'zh' });
+    await wait(60);
+    eq(run.snacks.length, before, '切回原语言不再弹提示');
   }
 
   console.log('[2] 首次同步写入任务');

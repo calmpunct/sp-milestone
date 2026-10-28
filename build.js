@@ -3,6 +3,9 @@
  * 构建脚本：把 src 下的模块打包成可安装的插件目录与 ZIP。
  * 纯 Node 实现，无第三方依赖。
  *   node build.js
+ *
+ * 产物是可读的：样式与脚本原样内联（保留注释与缩进），每段前面有来源横幅，
+ * 出问题时可以直接打开 dist/index.html 定位到具体模块。
  */
 'use strict';
 
@@ -17,13 +20,10 @@ const SRC = path.join(ROOT, 'src');
 const DIST = path.join(ROOT, 'dist');
 const REL = path.join(ROOT, 'releases');
 
-// 宿主对单个插件文件有 100KB 上限，index.html 又是自包含的（样式与脚本都内联），
-// 所以构建时统一去掉注释与多余空白。设 BUILD_MINIFY=0 可产出未压缩版本用于排查。
-const MINIFY = process.env.BUILD_MINIFY !== '0';
-
-// 体积预算：100KB 是「该瘦身了」的警告线，160KB 是硬上限（见 buildIndexHtml 里的说明）
-const SIZE_WARN = 100 * 1024;
-const SIZE_MAX = 160 * 1024;
+// index.html 必须自包含（样式与脚本内联：iframe 走 srcdoc 加载，ZIP 里的其它文件不会被 serve），
+// 所以产物是多个源文件拼起来的单页。体积按 1024KB 卡上限，够用且不必牺牲可读性。
+const SIZE_WARN = 768 * 1024;   // 警示线：接近上限时先提个醒
+const SIZE_MAX = 1024 * 1024;   // 硬上限：超过直接构建失败
 
 // 固定 ZIP 内时间戳，保证同样的源码构建出同样的 sha256（可重现构建）
 // 需要覆盖时设置环境变量 BUILD_EPOCH（毫秒）
@@ -32,6 +32,11 @@ const STAMP = process.env.BUILD_EPOCH
   : new Date(Date.UTC(2026, 9, 26, 4, 0, 0));
 
 const read = (p) => fs.readFileSync(path.join(SRC, p), 'utf8');
+
+// 清单里的显示名会写进 <title>，转义一遍免得名字里带 & 或 < 时把 HTML 撑坏
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+})[c]);
 
 /* ---------------- 语言包 ----------------
  * src/locales/*.js 全量内联。加一种语言 = 丢一个文件进这个目录，不用改代码。
@@ -69,229 +74,30 @@ function localePayload() {
   return { c: codes, d };
 }
 
-/* ---------------- 压缩（零依赖） ----------------
- * 只做「删注释 + 压空白」，不重命名、不合并行，因此不会踩 ASI 之类的坑。
- * 两处细节：
- *   1. 字符串、模板串、正则字面量原样保留（否则 `'http://x'`、`/a\/b/` 会被当注释吃掉）；
- *   2. JS 输出后用 vm.Script 校验语法，压缩出问题直接构建失败，不产出坏包。
- */
-
-const isWordChar = (c) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-  (c >= '0' && c <= '9') || c === '_' || c === '$';
-
-const REGEX_ALLOWED_AFTER_WORD = /^(?:return|typeof|case|in|of|new|delete|void|do|else|instanceof|yield|await)$/;
-
-// 这些关键字后跟 ( 时中间的空白可以省：`if (` -> `if(`（关键字本身即分隔符，无 ASI 风险）
-const NO_SPACE_BEFORE_PAREN = /^(?:function|if|for|while|switch|catch)$/;
-// 这些关键字后跟 { 时同理：`else {` -> `else{`
-const NO_SPACE_BEFORE_BRACE = /^(?:else|do|try|finally)$/;
-
-function minifyJs(src) {
-  const s = src.replace(/\r\n/g, '\n');
-  const n = s.length;
-  let i = 0;
-  let out = '';
-  let prev = '';       // 上一个有效字符（用于判断 / 是除号还是正则起点）
-  let prevWord = '';   // 上一个标识符
-  let last = '';       // 已输出的最后一个字符
-
-  const push = (ch) => { out += ch; last = ch; };
-
-  while (i < n) {
-    const c = s[i];
-    const c2 = s[i + 1];
-
-    // 注释
-    if (c === '/' && c2 === '/') {
-      while (i < n && s[i] !== '\n') i++;
-      continue;
-    }
-    if (c === '/' && c2 === '*') {
-      i += 2;
-      while (i < n && !(s[i] === '*' && s[i + 1] === '/')) i++;
-      i += 2;
-      // 两侧都是标识符字符时必须留一个空格，否则 a/*x*/b 会被粘成 ab
-      if (isWordChar(last) && i < n && isWordChar(s[i])) push(' ');
-      continue;
-    }
-
-    // 字符串 / 模板串：原样输出
-    if (c === '"' || c === "'" || c === '`') {
-      const q = c;
-      push(c);
-      i++;
-      while (i < n) {
-        const ch = s[i];
-        if (ch === '\\') { push(ch); push(s[i + 1] || ''); i += 2; continue; }
-        push(ch);
-        i++;
-        if (ch === q) break;
-      }
-      prev = q;
-      prevWord = '';
-      continue;
-    }
-
-    // 正则字面量：/ 前面已经是「值」时才是除号
-    if (c === '/') {
-      const valueBefore = prev !== '' && (isWordChar(prev) || prev === ')' || prev === ']' ||
-        REGEX_ALLOWED_AFTER_WORD.test(prevWord));
-      if (!valueBefore) {
-        push(c);
-        i++;
-        let inClass = false;
-        while (i < n) {
-          const ch = s[i];
-          if (ch === '\\') { push(ch); push(s[i + 1] || ''); i += 2; continue; }
-          push(ch);
-          i++;
-          if (ch === '[') inClass = true;
-          else if (ch === ']') inClass = false;
-          else if (ch === '/' && !inClass) break;
-        }
-        while (i < n && isWordChar(s[i])) { push(s[i]); i++; }   // 修饰符 i / g / m
-        prev = '/';
-        prevWord = '';
-        continue;
-      }
-    }
-
-    // 换行：默认保留（省略分号时靠它兜底），但上一行以 ; , { ( [ : 结尾时换行是多余的
-    // ——分号已断句，其余字符不可能结束一条语句，因此合并后语义不变（省约 1.7KB）
-    if (c === '\n') {
-      while (last === ' ') { out = out.slice(0, -1); last = out[out.length - 1] || ''; }
-      i++;
-      while (i < n && (s[i] === ' ' || s[i] === '\t')) i++;
-      if (';,{([]:'.indexOf(last) === -1) push('\n');
-      prev = '';
-      prevWord = '';
-      continue;
-    }
-
-    // 行内空白压成一个
-    if (c === ' ' || c === '\t') {
-      while (i < n && (s[i] === ' ' || s[i] === '\t')) i++;
-      // 块边界的空白纯属排版，去掉不影响语义（约省 1KB）：
-      //   `if (`    -> `if(`     关键字后紧跟括号，关键字自身已起分隔作用
-      //   `else {`  -> `else{`   同上，作用于花括号
-      //   `) {`     -> `){`      右括号后紧跟左花括号
-      //   `{ return`->`{return`  左花括号后紧跟标识符
-      //   `; }`     -> `;}`      分号后紧跟右花括号
-      //   `} else`  -> `}else`   右花括号后紧跟标识符（} 是标点，不会粘连）
-      //   `a === b` -> `a===b`   等号两侧（等号本身即分隔符）
-      const nx = s[i];
-      if (nx === '(' && NO_SPACE_BEFORE_PAREN.test(prevWord)) { prevWord = ''; continue; }
-      if (nx === '{' && (last === ')' || NO_SPACE_BEFORE_BRACE.test(prevWord))) { prevWord = ''; continue; }
-      if (nx === '}' && last === ';') { prevWord = ''; continue; }
-      if (nx !== undefined && isWordChar(nx) && (last === '{' || last === '}')) { prevWord = ''; continue; }
-      // 等号两侧：`a === b` -> `a===b`、`c !== d` -> `c!==d`（> 留箭头函数，单独的 ! 留逻辑非）
-      if (last === '=' && nx !== '=' && nx !== '>') { prevWord = ''; continue; }
-      const isEq = nx === '=' || (nx === '!' && s[i + 1] === '=');
-      if (isEq && (isWordChar(last) || last === ')' || last === ']')) { prevWord = ''; continue; }
-      if (last !== ' ' && last !== '\n' && last !== '') push(' ');
-      continue;
-    }
-
-    // 标识符整体输出，便于记录 prevWord
-    if (isWordChar(c)) {
-      let w = c;
-      i++;
-      while (i < n && isWordChar(s[i])) { w += s[i]; i++; }
-      out += w;
-      last = w[w.length - 1];
-      prev = last;
-      prevWord = w;
-      continue;
-    }
-
-    push(c);
-    prev = c;
-    prevWord = '';
-    i++;
-  }
-
-  return out.split('\n').map((line) => line.replace(/\s+$/, '')).filter(Boolean).join('\n');
-}
-
-function minifyCss(src) {
-  // 先切成「代码段 / 字符串段」，只对代码段做压缩，避免动到 content: '…' 里的内容
-  const parts = [];
-  let buf = '';
-  let i = 0;
-  const n = src.length;
-
-  while (i < n) {
-    const c = src[i];
-    const c2 = src[i + 1];
-    if (c === '/' && c2 === '*') {
-      i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++;
-      i += 2;
-      buf += ' ';
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      if (buf) { parts.push({ code: true, text: buf }); buf = ''; }
-      let str = c;
-      i++;
-      while (i < n) {
-        const ch = src[i];
-        str += ch;
-        i++;
-        if (ch === '\\') { str += src[i] || ''; i++; continue; }
-        if (ch === c) break;
-      }
-      parts.push({ code: false, text: str });
-      continue;
-    }
-    buf += c;
-    i++;
-  }
-  if (buf) parts.push({ code: true, text: buf });
-
-  let out = '';
-  for (const p of parts) {
-    if (!p.code) { out += p.text; continue; }
-    let t = p.text.replace(/[\s]+/g, ' ');
-    t = t.replace(/ ?([{};:>]) ?/g, '$1');
-    t = t.replace(/,\s*/g, ',');
-    t = t.replace(/;\}/g, '}');
-    // 数值与颜色的等价简写：0.5s -> .5s、#ffffff -> #fff
-    t = t.replace(/(^|[^\w.#])0\.(\d)/g, '$1.$2');
-    t = t.replace(/#([0-9a-f])\1([0-9a-f])\2([0-9a-f])\3(?![0-9a-f])/gi, '#$1$2$3');
-    out += t;
-  }
-  return out.replace(/ ?\n ?/g, '\n').trim();
-}
-
-/** 模板骨架压缩：删注释、去行首尾空白、去空行（只作用于模板，不碰注入的 CSS/JS） */
-function minifyHtml(html) {
-  return html
-    .replace(/<!--(?!\[if)[\s\S]*?-->/g, '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join('\n');
-}
-
-/** 压缩后用 V8 重新解析一遍，语法有问题立刻失败 */
+/** 产物自检：内联脚本交给 V8 解析一遍，语法有问题立刻失败，不产出坏包 */
 function assertParses(code, label) {
   try {
     new vm.Script(code, { filename: label });
   } catch (e) {
-    throw new Error(label + ' 压缩后语法错误：' + e.message);
+    throw new Error(label + ' 语法错误：' + e.message);
   }
 }
 
-/** 语言包以紧凑 JSON 内联，本身已是压缩形态，不再过压缩器 */
-const localeScript = () => 'self.I18N_DATA=' + JSON.stringify(localePayload()) + ';\n';
+/** 内联段之间的来源横幅：产物里一眼看出这段来自哪个源文件，排查时不用回头翻构建脚本 */
+const banner = (file) => '/* ===== ' + file + ' ===== */\n';
 
-const jsBundle = (files) => {
-  const src = files.map(read).join('\n\n');
-  return MINIFY ? minifyJs(src) : src;
-};
+/**
+ * 语言包内联：合成「键 → 各语言值」的行列结构后格式化输出，
+ * 直接在产物里就能查文案，不用为了看一眼中文去翻 src/locales。
+ */
+const localeScript = () => banner('src/locales/*.js（构建时合成）') +
+  'self.I18N_DATA = ' + JSON.stringify(localePayload(), null, 2) + ';\n';
 
-const cssBundle = (file) => (MINIFY ? minifyCss(read(file)) : read(file));
+const jsBundle = (files) => files
+  .map((f) => banner('src/' + f) + read(f))
+  .join('\n\n');
+
+const cssBundle = (file) => banner('src/' + file) + read(file);
 
 // 预览页示例数据
 const DEMO_DATA = {
@@ -334,8 +140,9 @@ const DEMO_DATA = {
 /* ---------------- 组装 ---------------- */
 
 function buildIndexHtml() {
-  const ver = JSON.parse(read('manifest.json')).version;
-  const tpl = MINIFY ? minifyHtml(read('index.tpl.html')) : read('index.tpl.html');
+  const manifest = JSON.parse(read('manifest.json'));
+  const ver = manifest.version;
+  const tpl = read('index.tpl.html');
   const css = cssBundle('styles.css');
   const js = localeScript() + jsBundle(['i18n.js', 'lunar.js', 'event-core.js', 'app.js']);
   assertParses(js, 'index.html 内联脚本');
@@ -343,7 +150,9 @@ function buildIndexHtml() {
   const html = tpl
     .replace('/*INJECT_STYLES*/', () => css.trim())
     .replace('/*INJECT_SCRIPTS*/', () => js.trim())
-    .replace(/__CD_VERSION__/g, ver);
+    .replace(/__CD_VERSION__/g, ver)
+    // 初始 <title> 用清单显示名：脚本跑起来后会按语言重设，这里只保证首帧不是占位符
+    .replace(/__CD_NAME__/g, () => escapeHtml(manifest.name));
 
   if (!html.includes('window.Lunar') && !html.includes('global.Lunar')) {
     throw new Error('index.html 未包含农历模块');
@@ -351,20 +160,19 @@ function buildIndexHtml() {
   if (/<script\s+src=/i.test(html)) throw new Error('index.html 不得引用外部脚本');
   if (/\b(?:src|href)\s*=\s*["']https?:\/\//i.test(html)) throw new Error('index.html 不得引用外链资源');
   if (/@import\s+url/i.test(html)) throw new Error('index.html 不得 @import 外部样式');
-  // 内联脚本里出现 </script> 或 <!-- 会把 HTML 提前截断，写盘前先拦住
+  // 内联脚本 / 样式里出现 </script>、</style> 或 <!-- 会把 HTML 提前截断，写盘前先拦住
   if (/<\/script|<!--/.test(js)) throw new Error('内联脚本含 </script> 或 <!--，会截断 HTML');
-  // 体积预算：
-  //   上游文档并没有「单文件 100KB」的硬限制（只校验社区清单的 ZIP ≤ 10MB），
-  //   100KB 是本项目自己定的体验预算 —— 超过只警告，不影响安装。
-  //   真正的硬门槛设在这里，防止哪天误打包进大文件（如未压缩构建直接发布）。
+  if (/<\/style/i.test(css)) throw new Error('内联样式含 </style，会截断 HTML');
+  // 体积预算：宿主对 index.html 没有硬限制，1024KB 是本项目自定的上限。
+  // 靠近上限时先警告（多半是文案或语言包膨胀），超过则直接失败，避免打出装不动的包。
   const idxBytes = Buffer.byteLength(html, 'utf8');
   if (idxBytes > SIZE_WARN) {
-    console.warn('  ⚠️ index.html ' + (idxBytes / 1024).toFixed(1) + ' KB，超过 ' +
-      (SIZE_WARN / 1024) + 'KB 预算（每多一种语言约 +5KB）');
+    console.warn('  ⚠️ index.html ' + (idxBytes / 1024).toFixed(1) + ' KB，已超过 ' +
+      (SIZE_WARN / 1024) + 'KB 警示线（上限 ' + (SIZE_MAX / 1024) + 'KB；每多一种语言约 +20KB）');
   }
   if (idxBytes > SIZE_MAX) {
     throw new Error('index.html 超过 ' + (SIZE_MAX / 1024) + 'KB（' +
-      (idxBytes / 1024).toFixed(1) + ' KB），请检查是否误打包了未压缩内容');
+      (idxBytes / 1024).toFixed(1) + ' KB），请精简文案或语言包');
   }
   return html;
 }
@@ -378,10 +186,11 @@ function buildPluginJs() {
   const out = head + code;
   const bytes = Buffer.byteLength(out, 'utf8');
   if (bytes > SIZE_WARN) {
-    console.warn('  ⚠️ plugin.js ' + (bytes / 1024).toFixed(1) + ' KB，超过 ' + (SIZE_WARN / 1024) + 'KB 预算');
+    console.warn('  ⚠️ plugin.js ' + (bytes / 1024).toFixed(1) + ' KB，已超过 ' +
+      (SIZE_WARN / 1024) + 'KB 警示线（上限 ' + (SIZE_MAX / 1024) + 'KB）');
   }
   if (bytes > SIZE_MAX) {
-    throw new Error('plugin.js 超过 ' + (SIZE_MAX / 1024) + 'KB，请检查是否误打包了未压缩内容');
+    throw new Error('plugin.js 超过 ' + (SIZE_MAX / 1024) + 'KB，请检查是否误打包了无关内容');
   }
   return out;
 }
@@ -471,9 +280,11 @@ function makeZip(files, when) {
 /* ---------------- 主流程 ---------------- */
 
 /**
- * 命名一致性闸门：一个项目只允许一个机器标识。
- * zip 名、社区插件 id、package.json 名都从 manifest.id 派生，任何一处写错都会让
- * 安装包名与身份对不上（历史问题：package.json 曾长期停在 2.3.0，manifest 已到 2.5.2）。
+ * 命名一致性闸门：项目名、插件 id、安装包名三者是派生关系，只允许一个真源。
+ *   项目名（package.json.name / 安装包前缀）= sp-<manifest.id>
+ *   插件 id（manifest.id / 社区插件 id / 同步数据归属）= 不带前缀的短名
+ * 任何一处写错都会让安装包与身份对不上（历史问题：id 曾叫 countdown-days、
+ * 项目名曾叫 super-productivity-milestone、package.json 还长期停在 2.3.0）。
  */
 function assertNaming(manifest) {
   let pkg;
@@ -482,10 +293,11 @@ function assertNaming(manifest) {
   } catch (e) {
     throw new Error('package.json 读取失败: ' + e.message);
   }
-  if (pkg.name !== manifest.id) {
+  const want = 'sp-' + manifest.id;
+  if (pkg.name !== want) {
     throw new Error(
-      '命名不一致：package.json name="' + pkg.name + '" 与 manifest.id="' + manifest.id + '" 不同，' +
-      '两者必须一致（zip 名由 manifest.id 决定）'
+      '命名不一致：package.json name="' + pkg.name + '" 应为 "' + want +
+      '"（项目名固定为 sp-<manifest.id>）'
     );
   }
   if (pkg.version !== manifest.version) {
@@ -495,6 +307,7 @@ function assertNaming(manifest) {
     );
   }
   if (!String(manifest.name || '').trim()) throw new Error('manifest.name（显示名）不能为空');
+  return pkg;
 }
 
 function main() {
@@ -516,7 +329,13 @@ function main() {
   if (!Array.isArray(manifest.hooks)) throw new Error('manifest.hooks 必须是数组');
   if (manifest.iFrame !== true) throw new Error('iFrame 必须为 true');
   if (!/^[a-z0-9-]+$/.test(manifest.id)) throw new Error('manifest.id 必须是 kebab-case');
-  assertNaming(manifest);
+  // 宿主会给每个 iFrame 插件自动补一条菜单入口（用 manifest.name，注册时写死，语言变了也不会变）。
+  // 本插件的入口由 plugin.js 自己注册，才能用插件自己的语言包取词，所以这里要求关掉自动注册，
+  // 否则英文环境下导航里会同时出现「Milestone」（我们的）和「Milestone」（宿主的）两条。
+  if (manifest.isSkipMenuEntry !== true) {
+    throw new Error('manifest.isSkipMenuEntry 必须为 true（菜单入口由 plugin.js 注册，避免重复）');
+  }
+  const pkg = assertNaming(manifest);
 
   const indexHtml = buildIndexHtml();
   const pluginJs = buildPluginJs();
@@ -541,6 +360,8 @@ function main() {
     'registerHook:function(){},' +
     'showIndexHtmlAsView:function(){},' +
     'showSnack:function(c){console.log("[demo snack]",c&&c.msg)},' +
+    // 宿主 19.x 就是这样暴露语言的：cfg 里没有 lang，只有 getCurrentLanguage()
+    "getCurrentLanguage:function(){return 'zh'}," +
     'loadSyncedData:function(){return Promise.resolve(JSON.stringify(window.__DEMO__))},' +
     'persistDataSynced:function(s){window.__DEMO__=JSON.parse(s);return Promise.resolve()},' +
     'openDialog:function(c){var b=c&&c.buttons||[];return Promise.resolve(b.length?b[b.length-1].label:"确定")}' +
@@ -548,7 +369,9 @@ function main() {
   const demo = indexHtml.replace('</body>', demoMock + '\n</body>');
   fs.writeFileSync(path.join(PREVIEW, 'demo.html'), demo, 'utf8');
 
-  const zipName = `${manifest.id}-v${manifest.version}.zip`;
+  // 安装包名用项目名（sp-milestone），不用插件 id（milestone）：
+  // 社区仓库 / 下载页统一以项目名对外，id 只在宿主内部做身份标识。
+  const zipName = `${pkg.name}-v${manifest.version}.zip`;
   const zipBuf = makeZip(outFiles, STAMP);
   if (zipBuf.length > 10 * 1024 * 1024) throw new Error('ZIP 超过 10MB 上限');
 
@@ -571,15 +394,19 @@ function main() {
   console.log('  目录   : dist/');
   outFiles.forEach((f) => console.log(`    - ${f.name}  ${(f.data.length / 1024).toFixed(1)} KB`));
   const idxKb = (Buffer.byteLength(indexHtml, 'utf8') / 1024).toFixed(1);
-  console.log(`  index  : ${idxKb} KB / ${SIZE_WARN / 1024} KB 预算（硬上限 ${SIZE_MAX / 1024} KB）`);
+  console.log(`  index  : ${idxKb} KB（上限 ${SIZE_MAX / 1024} KB）`);
   console.log(`  安装包 : releases/${writtenName}  (${kb} KB)`);
   console.log(`  sha256 : ${sha}`);
   console.log(`  预览   : dist/index.html`);
 }
 
-// 直接执行时构建；被测试 require 时只导出压缩器等工具函数
+// 直接执行时构建；被测试 require 时只导出构建函数与常量
 if (require.main === module) {
   main();
 }
 
-module.exports = { minifyJs, minifyCss, minifyHtml, buildIndexHtml, buildPluginJs, assertNaming, read };
+module.exports = {
+  buildIndexHtml, buildPluginJs, assertNaming, read,
+  // 体积常量与构建模式导出给测试用，避免测试里再写一份同样的数字
+  SIZE_WARN, SIZE_MAX
+};

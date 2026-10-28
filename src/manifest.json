@@ -1,12 +1,13 @@
 {
-  "id": "plugin-milestone",
-  "name": "里程碑",
-  "version": "2.7.0",
+  "id": "milestone",
+  "name": "Milestone",
+  "version": "1.0.0",
   "description": "Milestones — countdowns, anniversaries, birthdays and festivals, with lunar calendar conversion, festival presets and cross-device sync. / 里程碑：倒数日、纪念日、生日与节日管理，支持农历换算与预设节日、跨设备同步。",
   "manifestVersion": 1,
   "minSupVersion": "14.0.0",
   "icon": "icon.svg",
   "iFrame": true,
+  "isSkipMenuEntry": true,
   "permissions": [],
   "hooks": [
     "persistedDataChanged",

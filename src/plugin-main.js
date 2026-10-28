@@ -25,6 +25,8 @@
 
   /* ---------------- 语言 ---------------- */
 
+  var hostLangCode = '';
+
   function navLang() {
     try {
       return (window.navigator && window.navigator.language) || '';
@@ -33,13 +35,33 @@
     }
   }
 
-  /** 宿主应用的语言（PluginAPI.cfg.lang），老版本没有就退回系统语言 */
+  /**
+   * 宿主应用的语言，也就是「软件里设定的语言」。
+   * 19.x 的 PluginAPI.cfg 只有 { theme, appVersion, platform, isDev }，根本没有 lang 字段，
+   * 所以首选 getCurrentLanguage()；老版本宿主 / 测试桩可能只给 cfg.lang（字符串或 { code }）。
+   * 最后才退回系统语言。
+   */
   function hostLang() {
+    var api = P();
     try {
-      var api = P();
-      if (api && api.cfg && api.cfg.lang) return api.cfg.lang;
-    } catch (e) { /* ignore */ }
-    return navLang();
+      if (api && typeof api.getCurrentLanguage === 'function') {
+        var cur = api.getCurrentLanguage();
+        if (cur) return cur;
+      }
+      if (api && api.cfg) {
+        var c = api.cfg.lang;
+        if (c && typeof c === 'object' && c.code) return c.code;
+        if (typeof c === 'string' && c) return c;
+      }
+    } catch (e) { /* 旧版本宿主没有这些字段 */ }
+    return hostLangCode || navLang();
+  }
+
+  /** languageChange 的载荷：{ code, newLanguage }，不同版本给的字段不同，两个都认 */
+  function payloadLang(payload) {
+    if (!payload) return '';
+    if (typeof payload === 'string') return payload;
+    return payload.code || payload.newLanguage || '';
   }
 
   /** 语言偏好存在同步数据里；宿主侧与界面共用同一套解析规则 */
@@ -49,7 +71,7 @@
     EventCore.setLang(l);
   }
 
-  // 入口名称在注册时就要定，此时还没有数据，先按系统语言给一个
+  // 入口名称在注册时就要定，此时同步数据还没读回来，先按宿主语言给一个
   applyLang(null);
 
   var dataCache = null;
@@ -95,29 +117,95 @@
     return window.PluginAPI || null;
   }
 
-  function openView() {
-    try {
-      var api = P();
-      if (api && typeof api.showIndexHtmlAsView === 'function') api.showIndexHtmlAsView();
-    } catch (e) { /* 旧版本宿主不支持全页视图 */ }
+  /* ---------------- 入口（侧栏按钮 / 菜单项） ----------------
+   * 名称是注册时写死的字符串，宿主没有「改已注册入口名称」的 API：
+   *   · registerMenuEntry 遇到同 id 不同名会再追加一条 —— 导航里就会多出一个入口
+   *   · registerSidePanelButton 按 pluginId 去重，重复注册直接被忽略
+   * 所以语言变化时不重复注册：宿主将来若提供原地改名接口就调用它，否则提示一次重启
+   * （重启会重新执行本脚本，入口名称自然换成新语言）。
+   */
+  var entryLabel = '';
+  var promptedLabel = '';
+
+  function entryCfg() {
+    return { label: I.t('appName'), icon: 'event', onClick: openView };
   }
 
   function registerEntries() {
     var api = P();
     if (!api) return;
-    var label = I.t('appName');
+    var cfg = entryCfg();
 
     try {
       if (typeof api.registerSidePanelButton === 'function') {
-        api.registerSidePanelButton({ label: label, icon: 'event', onClick: openView });
+        api.registerSidePanelButton(cfg);
       }
     } catch (e) { /* ignore */ }
-
     try {
       if (typeof api.registerMenuEntry === 'function') {
-        api.registerMenuEntry({ label: label, icon: 'event', onClick: openView });
+        api.registerMenuEntry(cfg);
       }
     } catch (e) { /* ignore */ }
+    entryLabel = cfg.label;
+  }
+
+  /** 原地改名：只在宿主提供了这类接口时才可能成功，返回是否改到 */
+  function relabelEntries() {
+    var api = P();
+    if (!api) return false;
+    var cfg = entryCfg();
+    var done = false;
+    try {
+      if (typeof api.updateSidePanelButton === 'function') {
+        api.updateSidePanelButton(cfg);
+        done = true;
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      if (typeof api.updateMenuEntry === 'function') {
+        api.updateMenuEntry(cfg);
+        done = true;
+      }
+    } catch (e) { /* ignore */ }
+    return done;
+  }
+
+  function reloadApp() {
+    try { window.location.reload(); } catch (e) { /* ignore */ }
+  }
+
+  /**
+   * 入口名称跟上当前语言。
+   * @param {boolean} ask 改不动时是否提示重启（启动阶段为 false：那时语言刚落定，
+   *   弹提示只会打扰用户，用户也没做任何操作）
+   */
+  function syncEntries(ask) {
+    var label = I.t('appName');
+    if (!entryLabel || label === entryLabel) return;
+    if (relabelEntries()) { entryLabel = label; return; }
+    if (!ask) return;
+    if (promptedLabel === label) return;
+    promptedLabel = label;
+    try {
+      var actionLabel = I.t('nav.reload');
+      P().showSnack({
+        msg: I.t('nav.reloadHint', { name: label }),
+        type: 'INFO',
+        ico: 'event',
+        // 19.x 认的是 action.{label,onClick}；老宿主只认顶层的 actionStr / actionFn，
+        // 两套都写，谁都读到自己那份
+        action: { label: actionLabel, onClick: reloadApp },
+        actionStr: actionLabel,
+        actionFn: reloadApp
+      });
+    } catch (e) { /* 没有提示条能力就算了，下次启动一定是对的 */ }
+  }
+
+  function openView() {
+    try {
+      var api = P();
+      if (api && typeof api.showIndexHtmlAsView === 'function') api.showIndexHtmlAsView();
+    } catch (e) { /* 旧版本宿主不支持全页视图 */ }
   }
 
   /* ---------------- 数据 ---------------- */
@@ -202,11 +290,16 @@
       } catch (e) { /* ignore */ }
     }
 
-    // 宿主里切了语言：任务标题/备注要跟着换语言，数据没变也要重算一遍
+    // 宿主里切了语言：任务标题/备注要跟着换语言，数据没变也要重算一遍。
+    // 载荷里带着新的语言码，先落到本地再对账 —— 不依赖 cfg 里有没有 lang。
     var langKey = api.Hooks.LANGUAGE_CHANGE;
     if (langKey) {
       try {
-        api.registerHook(langKey, function () {
+        api.registerHook(langKey, function (payload) {
+          var code = payloadLang(payload);
+          if (code) hostLangCode = code;
+          applyLang(dataCache && dataCache.settings);
+          syncEntries(true);
           reconcile('language-change');
         });
       } catch (e) { /* ignore */ }
@@ -608,6 +701,13 @@
 
   registerEntries();
   watchData();
+
+  // 启动时就先读一次数据，只为把语言定下来：入口名称在注册时写死，越早按正确语言取词越好。
+  // 提醒 / 任务投影仍然等 boot 的 3.5 秒后再动，避免和宿主启动提示抢镜。
+  loadData().then(function (d) {
+    dataCache = d;
+    syncEntries(false);
+  }, function () { /* 读不到就继续用宿主语言，等 boot 再来 */ });
 
   function boot() {
     // 稍等一下，避免和宿主启动提示抢镜

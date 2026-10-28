@@ -16,7 +16,9 @@ releases/*.zip
 .idea/
 .DS_Store
 Thumbs.db
+.workbuddy
 
 # 日志
 *.log
 npm-debug.log*
+

@@ -108,6 +108,8 @@
     lang: "Language",
     'lang.auto': "Auto",
     'lang.hint': "\"Auto\" follows the app language; you can also pin one here. The choice syncs with your data and reminder tasks use it too.",
+    'nav.reloadHint': "The sidebar entry becomes \"{name}\" after a restart",
+    'nav.reload': "Restart",
 
     /* ---------------- filter chips ---------------- */
     'chip.all': "All",

@@ -69,6 +69,9 @@
 
   /* ================= 语言 ================= */
 
+  // 宿主没有给出语言时，用 languageChange 钩子带回的语言码兜底（见下方 hostLang）
+  var hostLangCode = '';
+
   /** 本机系统语言（宿主没有给出语言时兜底） */
   function navLang() {
     try {
@@ -80,14 +83,31 @@
 
   /**
    * 宿主应用的语言，即「软件里设定的语言」。
-   * PluginAPI.cfg.lang 由宿主注入；老版本没有 cfg 时退回系统语言。
+   * 19.x 的 PluginAPI.cfg 只有 { theme, appVersion, platform, isDev }，没有 lang，
+   * 所以首选 getCurrentLanguage()；老宿主 / 测试桩可能只给 cfg.lang（字符串或 { code }）。
+   * languageChange 钩子带回的语言码缓存在 hostLangCode 里，作为最后一道兜底。
    */
   function hostLang() {
     try {
       var P = window.PluginAPI;
-      if (P && P.cfg && P.cfg.lang) return P.cfg.lang;
+      if (P && typeof P.getCurrentLanguage === 'function') {
+        var cur = P.getCurrentLanguage();
+        if (cur) return cur;
+      }
+      if (P && P.cfg) {
+        var c = P.cfg.lang;
+        if (c && typeof c === 'object' && c.code) return c.code;
+        if (typeof c === 'string' && c) return c;
+      }
     } catch (e) { /* ignore */ }
-    return navLang();
+    return hostLangCode || navLang();
+  }
+
+  /** languageChange 的载荷：{ code, newLanguage }，两个字段都认 */
+  function payloadLang(payload) {
+    if (!payload) return '';
+    if (typeof payload === 'string') return payload;
+    return payload.code || payload.newLanguage || '';
   }
 
   /** 当前语言偏好（数据里可能没有这一项） */
@@ -1392,11 +1412,14 @@
     var P = window.PluginAPI;
     if (!P || typeof P.registerHook !== 'function' || !P.Hooks) return;
 
-    // 宿主里切了语言：语言偏好是「自动」时跟着换，界面立刻重排
+    // 宿主里切了语言：语言偏好是「自动」时跟着换，界面立刻重排。
+    // 载荷里带新的语言码，先记下来 —— 不依赖 cfg 里有没有 lang。
     var lKey = P.Hooks.LANGUAGE_CHANGE;
     if (lKey) {
       try {
-        P.registerHook(lKey, function () {
+        P.registerHook(lKey, function (payload) {
+          var code = payloadLang(payload);
+          if (code) hostLangCode = code;
           if (langPref() !== 'auto') return;
           applyLang('auto');
           renderAll();
