@@ -3,6 +3,9 @@
 **中文** · [English](#milestones)
 
 Super Productivity 插件。管理倒数日、纪念日、生日和节日，数据随应用同步在设备间流转；界面支持中文、英语。历法默认公历，可以开启农历支持。
+| <img width="450" alt="image" src="https://github.com/user-attachments/assets/848ce5f5-92b4-4c3f-a410-d0ed295da6d4" /> | <img width="450" alt="image" src="https://github.com/user-attachments/assets/0dd613f1-51e1-45b7-82e5-deda3efaa776" /> |
+| --- | --- |
+
 
 ## 功能
 
