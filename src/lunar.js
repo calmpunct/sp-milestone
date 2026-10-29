@@ -4,11 +4,13 @@
  * 无外部依赖，可在浏览器与 Node 中同时使用。
  */
 (function (global, factory) {
+  /* node-only:start （仅供 test/*.js require，构建时剥离）*/
   if (typeof module === 'object' && typeof module.exports === 'object') {
     module.exports = factory();
-  } else {
-    global.Lunar = factory();
+    return;
   }
+  /* node-only:end */
+  global.Lunar = factory();
 })(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 

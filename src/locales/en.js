@@ -22,8 +22,7 @@
     __name: "English",
 
     /* ---------------- identity ---------------- */
-    appName: "Milestones",
-    projectDefault: "Milestones",
+    appName: "Milestone",
     about: "{name} v{ver}",
     'about.author': "Author",
     'about.feedback': "Feedback",
@@ -110,8 +109,6 @@
     filterAria: "Filter",
     lang: "Language",
     'lang.auto': "Auto",
-    'nav.reloadHint': "The sidebar entry becomes \"{name}\" after a restart",
-    'nav.reload': "Restart",
 
     /* ---------------- filter chips ---------------- */
     'chip.all': "All",
@@ -174,6 +171,7 @@
     'sheet.edit': "Edit entry",
     'form.name': "Name",
     'form.namePh': "e.g. Mom's birthday",
+    'form.nameRequired': "Please enter a name",
     'form.kind': "Type",
     'form.preset': "Preset festivals",
     'form.presetHint': "Pick a festival to fill in the date and colour, or choose Custom and enter your own.",
@@ -219,8 +217,8 @@
 
     /* ---------------- reminder hints ---------------- */
     'remind.hintArchived': "Archived: hidden from \"All\", never reminded, and its task is deleted.",
-    'remind.hintBoth': "Creates a task in \"{p}\" and shows a snackbar when the app opens.",
-    'remind.hintTask': "Creates a task in \"{p}\" synced with the app; switching off deletes it.",
+    'remind.hintBoth': "Creates an Inbox task tagged \"{t}\" and shows a snackbar when the app opens.",
+    'remind.hintTask': "Creates an Inbox task tagged \"{t}\", synced with the app; switching off deletes it.",
     'remind.hintSnack': "Snackbar only when the app opens — the plugin has no background push.",
     'remind.hintNone': "This entry will not remind you (both channels are off).",
 
@@ -229,7 +227,7 @@
     'set.heroToggle': "Enlarge the first entry",
     'set.heroHint': "Enlarges the first entry of <b>the current category</b>; when off the list starts at the top.",
     'set.data': "Data",
-    'set.clear': "Clear Milestones data cache",
+    'set.clear': "Clear Milestone data cache",
     'set.clearHint': "For wrong data, duplicate tasks or bad dates. Clears every entry and setting and removes this plugin's tasks — <b>other tasks stay</b>.",
     'set.about': "About",
     'data.count': "{n} entries in total",

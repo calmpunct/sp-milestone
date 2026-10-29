@@ -7,11 +7,12 @@
  *
  * 语言优先级：
  *   1. settings.lang（用户在插件里明确选的语言）
- *   2. 宿主应用的语言（PluginAPI.getCurrentLanguage()，老宿主退回 cfg.lang / languageChange 载荷）
+ *   2. 宿主应用的语言（PluginAPI.getCurrentLanguage()，取不到时用 languageChange 载荷里的语言码）
  *   3. 系统语言（navigator.language）
  *   4. 英文（FALLBACK），再不行回落到基准语言
  */
 (function (global, factory) {
+  /* node-only:start （仅供 test/*.js require，构建时会整段剥离，勿在浏览器代码里引用）*/
   if (typeof module === 'object' && typeof module.exports === 'object') {
     // Node：把 locales 目录里所有语言包都读进来（新增语言文件无需改这里）
     var fs = require('fs');
@@ -22,9 +23,10 @@
       if (/\.js$/.test(f)) seed[f.replace(/\.js$/, '')] = require('./locales/' + f);
     });
     module.exports = factory(null, seed);
-  } else {
-    global.I18N = factory(global, null);
+    return;
   }
+  /* node-only:end */
+  global.I18N = factory(global, null);
 })(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : this, function (global, seed) {
   'use strict';
 
@@ -68,12 +70,37 @@
 
   /**
    * 语言代码归一：zh-CN / zh_TW -> zh。
-   * 也接受宿主给的 { code: 'zh-CN' } 结构（老版本宿主的 PluginAPI.cfg.lang 就是这种形状），
-   * 免得调用方各自判断一遍。
    */
   function normCode(code) {
-    if (code && typeof code === 'object') code = code.code || '';
     return String(code || '').toLowerCase().split(/[-_]/)[0];
+  }
+
+  // 宿主的默认语言（Super Productivity 的 DEFAULT_LANGUAGE）
+  var HOST_DEFAULT = 'en';
+
+  /**
+   * 决定「宿主当前的语言」，宿主那两个来源各有各的坑，必须合起来看：
+   *
+   *   · getCurrentLanguage()：底层是 PluginI18nService 的信号量，初值 DEFAULT_LANGUAGE（en），
+   *     只有当 globalConfig.localization.lng **有值**时才会被同步。所以用户在软件里把语言设成
+   *     「跟随系统」时 lng 是空的，信号量永远停在 en —— 中文界面也会回报 'en'。
+   *   · getAppState().globalConfig.localization.lng：真实设定值。空 = 跟随系统。
+   *
+   * 于是：设定值优先（哪怕它真是 en，那就是用户选的英文）；
+   * 设定值为空才落到系统语言 —— 此时宿主界面本身就跟随系统，与之一致。
+   * @param {{setting?:string, cur?:string, switched?:string, nav?:string}} src
+   *        setting 软件里设定的语言 / cur getCurrentLanguage() /
+   *        switched languageChange 载荷里的语言码 / nav 系统语言
+   */
+  function pickHostLang(src) {
+    src = src || {};
+    var setting = normCode(src.setting);
+    if (setting) return setting;
+    var cur = normCode(src.cur);
+    if (cur && cur !== HOST_DEFAULT) return cur;
+    var sw = normCode(src.switched);
+    if (sw && sw !== HOST_DEFAULT) return sw;
+    return normCode(src.nav) || HOST_DEFAULT;
   }
 
   function dictOf(code) {
@@ -201,6 +228,8 @@
     safeHtml: safeHtml,
     apply: apply,
     resolve: resolve,
+    pickHostLang: pickHostLang,
+    normCode: normCode,
     setLang: setLang,
     getLang: getLang,
     codes: codes,

@@ -77,7 +77,7 @@ while ((m = tplRe.exec(tpl))) {
 const missing = [...used].filter((c) => !defined.has(c));
 ok(missing.length === 0, '所有使用的类名都有样式', missing.join(', '));
 
-const jsOnly = [...used].filter((c) => c.startsWith('cd-')).length;
+const jsOnly = [...used].filter((c) => c.startsWith('ml-')).length;
 console.log(`     定义 ${defined.size} 个类，引用 ${used.size} 个，缺失 ${missing.length} 个`);
 
 console.log('[3] 静态资源自包含');
@@ -86,7 +86,7 @@ ok(!/<script\s+src=/i.test(dist), 'index.html 无外部脚本');
 const extIssues = externalRefIssues(dist);
 ok(extIssues.length === 0, 'index.html 不加载外部资源（跳转链接除外）', extIssues.join('；'));
 // 关于里的作者与反馈地址：改模板时别把这两条信息弄丢（作者名单独成元素，不能只靠 URL 里出现）
-ok(/class="cd-about-v">calmpunct</.test(dist), '关于里显示了插件作者 calmpunct');
+ok(/class="ml-about-v">calmpunct</.test(dist), '关于里显示了插件作者 calmpunct');
 ok(/<a\b[^>]*href="https:\/\/github\.com\/calmpunct\/sp-milestone\/issues"/i.test(dist),
   '关于里有反馈地址链接 github.com/calmpunct/sp-milestone/issues');
 ok(!/@import/i.test(dist), 'index.html 无 @import');
@@ -112,8 +112,7 @@ app.split('\n').forEach((line, i) => {
 ok(unsafeT.length === 0, '拼 HTML 的文案都经过 esc()/I.html()', unsafeT.join(' | '));
 ok(!/FESTIVAL_GROUPS\[g\]\s*\+/.test(app), '节日分组标题也走 esc()');
 
-console.log('[4] 清单完整性');
-['id', 'name', 'version', 'manifestVersion', 'minSupVersion', 'iFrame', 'permissions', 'hooks']
+console.log('[4] 清单完整性');['id', 'name', 'version', 'manifestVersion', 'minSupVersion', 'iFrame', 'permissions', 'hooks']
   .forEach((k) => ok(manifest[k] !== undefined, '字段 ' + k));
 ok(manifest.iFrame === true, 'iFrame 为 true');
 ok(Array.isArray(manifest.permissions), 'permissions 是数组');
@@ -130,11 +129,31 @@ ok(/^[a-z0-9-]+$/.test(manifest.id), 'manifest.id 为 kebab-case', manifest.id);
 ok(pkg.name === 'sp-' + manifest.id, 'package.json name = sp-<manifest.id>', pkg.name + ' vs sp-' + manifest.id);
 ok(pkg.version === manifest.version, 'package.json 版本与清单一致', pkg.version + ' vs ' + manifest.version);
 ok(readme.includes(zipName), 'README 提到的安装包名与构建派生一致', zipName);
+// 最低宿主版本：代码只按 19 的插件 API 写（getCurrentLanguage / onReady / onUnload），
+// 宿主会拿它做硬校验，低于此版本直接拒绝安装，所以 README 里的要求必须与清单同值
+ok(manifest.minSupVersion === '19.0.0', '最低宿主版本 19.0.0', manifest.minSupVersion);
+ok(readme.includes(manifest.minSupVersion), 'README 写明的最低宿主版本与清单一致', manifest.minSupVersion);
 ok(!/countdown-days/.test(readme), 'README 里不再残留旧标识 countdown-days');
 ok(!/plugin-milestone/.test(readme), 'README 里不再残留旧标识 plugin-milestone');
 ok(!/super-productivity-milestone/.test(readme), 'README 里不再残留旧仓库名');
 ok(manifest.isSkipMenuEntry === true, '清单关掉了宿主的自动菜单入口（避免与插件自注册的重复）');
 ok(new RegExp('<title[^>]*>' + manifest.name + '</title>').test(dist), '页面标题与清单显示名一致', manifest.name);
+
+// 显示名约定（README「命名约定」一份规则，这里四行断言钉住，避免以后又冒出 Milestones 变体）：
+//   品牌位 = 单数 Milestone（清单 / 左侧入口 / 英文界面名）；中文界面称「里程碑」；
+//   任务项目名是容器，英文用复数 Milestones —— 它已写进老用户数据，改默认值会多出一个项目。
+const Core = require('../src/event-core.js');
+const enDict = require('../src/locales/en.js');
+const zhDict = require('../src/locales/zh.js');
+const mainSrc = read('src/plugin-main.js');
+const entryLabel = (/var ENTRY_LABEL = '([^']+)'/.exec(mainSrc) || [])[1];
+ok(manifest.name === 'Milestone', '清单显示名固定为 Milestone（单数，不翻译）', manifest.name);
+ok(entryLabel === manifest.name, '左侧导航入口名与清单显示名一致', entryLabel);
+ok(enDict.appName === 'Milestone', '英文界面名与清单一致（单数，不带 s）', enDict.appName);
+ok(zhDict.appName === '里程碑', '中文界面名用「里程碑」', zhDict.appName);
+ok(!('projectDefault' in enDict) && !('projectDefault' in zhDict), '旧的任务项目名文案已移除（任务改落收件箱）');
+ok(Core.TAG_DEFAULT === 'milestone', '提醒任务统一打 milestone 标签', Core.TAG_DEFAULT);
+ok(!('tagDefault' in enDict) && !('tagDefault' in zhDict), '标签名不进语言包（跟着语言变会多出一个标签）');
 
 // 代码里注册的钩子必须在清单中声明，否则宿主不会投递（曾漏掉 taskComplete/taskDelete）
 // 宿主脚本与 iframe 界面都会注册钩子，两边都要扫
@@ -169,6 +188,11 @@ ok(/<meta charset="utf-8">/i.test(dist), '声明 UTF-8');
 ok(/viewport/.test(dist), '移动端 viewport');
 ok(!/\t/.test(css), 'CSS 未混用制表符');
 
+// 前缀统一 ml-：CSS 类与变量、DOM id、localStorage 键、任务备注标记都是同一套命名空间。
+// 出现 cd- / cd:ev 说明又从前身（countdown-days）抄了东西进来。
+const prefixSources = css + tpl + app + mainJs + read('src/reminder-tasks.js') + pj;
+ok(!/cd-[a-z]|cd:ev/.test(prefixSources), '代码前缀统一 ml-，不残留 cd-');
+
 // 体积
 const sizes = {};
 ['manifest.json', 'plugin.js', 'index.html', 'icon.svg'].forEach((f) => {
@@ -189,6 +213,22 @@ ok(inlineJs.includes('/* ===== src/event-core.js ===== */'), '内联脚本带来
 ok(/\n {2,}\S/.test(inlineJs), '内联脚本保留源码缩进');
 ok(dist.includes('/* ===== src/styles.css ===== */'), '内联样式带来源横幅');
 ok(inlineJs.includes('语言优先级'), '内联脚本保留源码注释');
+
+// 宿主的安全检查（src/app/plugins/plugin-security.ts）只有一条正则：
+//   /require\s*\(\s*['"`](fs|child_process)/  →  'Attempts to use Node.js APIs without permission - will fail'
+// 源码里给单测用的 UMD Node 分支带 require('fs')，构建时必须剥离；
+// 这里把整类 Node API 一起钉死，避免以后再加模块时又把 Node 带进产物。
+const nodeApis = [
+  [/\brequire\s*\(/, 'require()'],
+  [/\bmodule\s*\.\s*exports\b/, 'module.exports'],
+  [/\b__dirname\b/, '__dirname'],
+  [/\b__filename\b/, '__filename'],
+  [/\bprocess\s*\.\s*[A-Za-z_$]/, 'process.xxx']
+];
+nodeApis.forEach(([re, name]) => {
+  ok(!re.test(pj), 'plugin.js 不含 Node API：' + name);
+  ok(!re.test(inlineJs), 'index.html 不含 Node API：' + name);
+});
 console.log(`     产物合计 ${(total / 1024).toFixed(1)} KB（index ${(sizes['index.html'] / 1024).toFixed(1)} KB / plugin ${(sizes['plugin.js'] / 1024).toFixed(1)} KB）`);
 
 console.log('[6] 不生成预览目录');

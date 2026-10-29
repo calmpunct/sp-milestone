@@ -21,18 +21,20 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，**�
 
 ## 安装
 
+**要求**：Super Productivity **19.0.0** 或更高版本（用到该版本才有的插件 API：`getCurrentLanguage` / `onReady` / `onUnload`）。低版本会在安装时被拒绝。
+
 **方式一：手动安装（推荐，各平台通用）**
 
 1. 打开 Super Productivity → `设置` → `插件`
 2. 点击 `Choose Plugin File`（选择插件文件）
-3. 选中 `releases/sp-milestone-v1.0.0.zip`
-4. 安装后，需要**开启插件**，左侧导航出现「里程碑」入口
+3. 选中 `releases/sp-milestone-v1.0.4.zip`
+4. 安装后，需要**开启插件**，左侧导航出现 `Milestone` 入口（入口名固定不翻译，见文末「命名约定」）
 
 > 不需要解压 ZIP。网页版因浏览器跨域限制无法自动下载，请手动下载 ZIP 后用同样方式安装。
 
 ## 使用
 
-- 点击右上角「添加」，选择类型、历法、日期；右边的齿轮是设置
+- 点击右上角「添加」，选择类型、历法、日期（**名称必填**，空名称不会保存）；右边的齿轮是设置
 - 选择「农历」后，用年 / 月 / 日三个下拉框指定农历日期，下方会实时显示对应公历、干支与生肖
 - 点击任意卡片可编辑或删除
 - 顶部筛选条可按类型过滤；**「归档」是单独一个视图**
@@ -65,8 +67,9 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，**�
 
 | 开关 | 打开后的效果 | 关掉后的效果 |
 | --- | --- | --- |
-| 加入任务列表 | 在项目「里程碑提醒」里插入一条任务 | 对应任务立即被删除 |
+| 加入任务列表 | 在**收件箱**插入一条任务，并打上 `milestone` 标签 | 对应任务立即被删除 |
 | 打开应用时弹窗提示条 | 应用启动或跨天检查时若到点，弹一条 snack | 不弹 |
+任务**落在收件箱**、不建项目：插件会在应用里准备好 `milestone` 标签，所有提醒任务都带上它，点标签就能一次筛出全部提醒。
 
 **提前天数**（当天 / 1 / 3 / 7 / 30 天，可多选）对两个渠道共用：任务列表按最近的一档决定到期日，提示条在命中的那几天各弹一次。
 
@@ -78,7 +81,7 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，**�
 🎂 妈妈生日（59岁）
 生日 · 农历四月十八 · 每年
 提前 3 天提醒 · 应处理日 2027-05-11
-cd:ev=e1;cy=2027-05-14
+ml:ev=e1;cy=2027-05-14
 ```
 
 最后一行是插件用的标记，别删它——跨设备靠它认出「这条任务是谁生成的」。删了也能在本机靠映射表补回。
@@ -109,17 +112,19 @@ cd:ev=e1;cy=2027-05-14
 
 ## 已知边界
 
-- **卸载插件不会清理已生成的任务**：卸载/禁用后任务会留在提醒项目里。卸载前把各个事项的「加入任务列表」关掉，或卸载后直接删除该项目
+- **卸载插件不会清理已生成的任务**：卸载/禁用后任务会留在收件箱里（带 `milestone` 标签）。卸载前把各个事项的「加入任务列表」关掉，或卸载后按标签 `milestone` 一次性清理
+- **老任务留在旧项目里**：1.0.1 及更早版本把任务建在「里程碑提醒」项目里。宿主没有安全的「把任务搬到另一个项目」接口（直接改 `projectId` 会与项目侧的 `taskIds` 对不上），所以升级后**只给老任务补上 `milestone` 标签、不搬项目**；想让它们全部落到收件箱，删掉那个旧项目即可，插件会在下一轮对账时按收件箱 + 标签重建
 - **提醒不会主动推送**：任务列表方式下任务会按时出现在列表里，但「到点弹通知」仍需应用在运行；插件没有系统级后台推送与常驻能力（宿主设计限制）
 - 农历数据覆盖 **1900–2100** 年。超出范围的日期显示「超出可算年限」，不会崩溃
 - 农历换算采用 1900-01-31 为基准的累积天数查表算法，已用 73,384 天逐日往返校验、201 个农历年天数校验
-- 任务备注里的 `cd:ev=…` 标记是识别依据；跨设备时如果备注被清空，可能会多出一条重复任务（下次对账会删掉多余的那条）
+- 任务备注里的 `ml:ev=…` 标记是识别依据；跨设备时如果备注被清空，可能会多出一条重复任务（下次对账会删掉多余的那条）
 - 任务同步需要宿主提供任务 API（`getAppState` / `addTask` / `updateTask` / `deleteTask`）。
 - 语言列表来自已注册的语言包；宿主切到某语言而插件没有对应语言包时，按英文显示
+- **软件语言设成「跟随系统」时，插件按系统语言显示**：宿主在这种情况下会把 `getCurrentLanguage()` 一直回报成默认值 `en`（它的语言信号量只在配置里有 `lng` 时才同步），所以插件改读 `globalConfig.localization.lng`——有值就用它（哪怕真是 `en`），为空才落到系统语言
 
----
 
-# Milestones
+
+# Milestone
 
 [中文](#里程碑) · **English**
 
@@ -142,18 +147,20 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 
 ## Installation
 
+**Requires**: Super Productivity **19.0.0** or newer (the plugin uses `getCurrentLanguage` / `onReady` / `onUnload`, which exist from that release). Older versions reject the install.
+
 **Option 1: manual install (recommended, works everywhere)**
 
 1. Open Super Productivity → `Settings` → `Plugins`
 2. Click `Choose Plugin File`
-3. Select `releases/sp-milestone-v1.0.0.zip`
-4. After installing, **enable the plugin** — a "Milestones" entry appears in the left navigation
+3. Select `releases/sp-milestone-v1.0.4.zip`
+4. After installing, **enable the plugin** — a "Milestone" entry appears in the left navigation
 
 > No need to unzip. The web version cannot download automatically because of browser CORS rules — download the ZIP manually and install it the same way.
 
 ## Usage
 
-- Tap **Add** in the top-right corner, choose type, calendar and date; the gear next to it opens settings
+- Tap **Add** in the top-right corner, choose type, calendar and date (**name is required** — an empty name is not saved); the gear next to it opens settings
 - After choosing **Lunar**, pick year / month / day from the three selects; the matching Gregorian date, sexagenary cycle and zodiac are shown below in real time
 - Tap any card to edit or delete it
 - The filter bar on top filters by type; **"Archive" is a separate view**
@@ -186,8 +193,9 @@ Reminders are **not** a global switch. Every entry has two independent switches 
 
 | Switch | When on | When off |
 | --- | --- | --- |
-| Add to task list | A task is inserted into the "Milestones" project | The task is deleted immediately |
+| Add to task list | A task is inserted into the **Inbox** and tagged `milestone` | The task is deleted immediately |
 | Snackbar on app open | A snackbar appears at start-up or on the day-rollover check when due | Nothing appears |
+Tasks **land in the Inbox**, not in a project: the plugin makes sure a `milestone` tag exists and puts it on every reminder task, so one tag click filters them all.
 
 **Lead days** (same day / 1 / 3 / 7 / 30, multi-select) are shared by both channels: the task list uses the nearest slot, the snackbar fires on each matching day.
 
@@ -199,7 +207,7 @@ A task looks like this (the type is marked with an icon):
 🎂 Mom's birthday (59)
 Birthday · Lunar month 4, day 18 · yearly
 Reminder 3 days before · due 2027-05-11
-cd:ev=e1;cy=2027-05-14
+ml:ev=e1;cy=2027-05-14
 ```
 
 The last line is a marker the plugin uses — please do not delete it, cross-device recognition depends on it. If it is gone, the local map table can still recover it.
@@ -234,6 +242,7 @@ Platform differences are deliberately avoided: the UI is an iframe full-page vie
 - **Reminders do not push by themselves**: tasks appear on time, but "notify me at that moment" still requires the app to be running — plugins have no system-level background push (host design)
 - Lunar data covers **1900–2100**. Dates outside the range show "Out of range" instead of crashing
 - The lunar conversion uses a cumulative-day table based on 1900-01-31; it is verified with 73,384 round-trip days and 201 lunar-year lengths
-- The `cd:ev=…` marker in task notes is the recognition key; if the notes are wiped during a cross-device sync, a duplicate task may appear temporarily (the next reconciliation removes it)
+- The `ml:ev=…` marker in task notes is the recognition key; if the notes are wiped during a cross-device sync, a duplicate task may appear temporarily (the next reconciliation removes it)
 - Task sync requires the host task API (`getAppState` / `addTask` / `updateTask` / `deleteTask`).
 - The language list comes from registered language packs; if the host switches to a language the plugin has no pack for, English is shown
+- **When the app language is "system default", the plugin follows the system language**: in that case the host keeps reporting the default `en` from `getCurrentLanguage()` (its language signal is only synced when `globalConfig.localization.lng` has a value), so the plugin reads `globalConfig.localization.lng` instead — any value wins (even a real `en`), and only an empty value falls back to the system language

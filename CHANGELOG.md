@@ -8,22 +8,54 @@
 
 ## 未发布
 
+### 修复（1.0.4）
+- **节日多选在填表途中被清空**：`buildPresets()` 重建预设按钮时把 `aria-pressed` 全写成 `false` 且不恢复，而 `applyLang()` 会调它重建。1.0.3 新增的「补读语言设定值」（`primeHostLang`）恰好是一**异步**的 `applyLang`，宿主 IPC 稍慢就会落在用户正在勾选的时刻 —— 刚选中的三个节日瞬间变回未选中、保存按钮从「添加 3 个」退回「保存」，看起来就是「多选坏了」。两层一起修：①`buildPresets()` 重建后立刻 `markPreset(selectedPresets())`；②`applyLang()` 在表单打开时补齐 `refreshPresetRow` / `refreshCalendarRow` / `refreshSaveLabel` / `refreshRemindHint`，并把农历年/月/日下拉的当前值先存后恢复（重建 `<select>` 同样会丢选中值）。新增 `[18.1]` 用例（模拟 700ms 迟到的 `getAppState`，断言重建后仍是三个选中 + 按钮仍显示数量），已确认去掉修复即失败
+- 版本 1.0.3 → 1.0.4
+
+### 修复（1.0.3）
+- **中文系统 + 中文软件，插件却显示英文**：宿主的 `getCurrentLanguage()` 底层是 `PluginI18nService` 的信号量，初值 `DEFAULT_LANGUAGE`（`en`），**只有 `globalConfig.localization.lng` 有值时才同步**。用户在软件里把语言设成「跟随系统」（或从没动过）时 `lng` 为空，信号量就永远停在 `en` —— 界面明明是中文，插件拿到的却是 `en`。改为读 `getAppState().globalConfig.localization.lng`：有值就用（哪怕真是 `en`，那是用户选的英文），为空才落到系统语言（此时宿主界面本身也跟随系统）。`hostLang()` 的三方来源合并抽成 `I18N.pickHostLang()`，宿主脚本与界面共用；`languageChange` 载荷改成 `code || newLanguage`（实测切回同批语言时只带 `newLanguage`，只认 `code` 会一直用上一次的值）。新增 `[4.1]` 单测 9 条 + `[22.3]` 用例（跟随系统/显式中文/显式英文/英文系统四种组合）
+
+### 变更（1.0.3）
+- **名称改为必填**：以前名称留空会静默回落到类型名「倒数日」，列表里一排同名条目根本认不出是什么事。现在空名称（含纯空格）不保存：弹层不关、输入框标红（`aria-invalid`）、下方给出「请填写名称」，一输入就撤掉提示；必填标记 `*` 跟在标签后面；顺手加了回车即保存。补 `[9]` 用例（空名称不落库 / 全空格不落库 / 输入后恢复 / 名称按纯文本保存）
+- 版本 1.0.2 → 1.0.3
+
+### 变更（1.0.2）
+- **提醒任务改为「收件箱 + 标签」，不再建项目**：以前会把任务塞进自动创建的「里程碑提醒」项目（项目名还随界面语言变，中英文各存一份）。现在 `addTask` 不再传 `projectId`，宿主按缺省落到**收件箱**；插件保证存在 `milestone` 标签并给每条提醒任务打上（`getAllTags` → 命中就复用，没有才 `addTag`），点标签可一次筛出全部提醒。标签名写成常量 `Core.TAG_DEFAULT`、**不进语言包**——标签是宿主机里的实体，名字跟着语言变就会凭空多出一个同名标签
+- **老任务只补标签，不搬项目**：宿主没有安全的「把任务挪到另一个项目」接口（直接改 `projectId` 不会同步项目侧的 `taskIds`，任务会两头对不上），所以升级后老任务留在原项目、只补 `milestone` 标签；删掉旧项目即可让插件按收件箱重建（补 `[3.2]` 用例断言补丁里没有 `projectId`）
+- `settings.taskProject` → `settings.taskTag`（默认 `milestone`），`projectDefault` 文案从语言包移除；提醒说明文案改为「到期在收件箱生成任务，并打上『{t}』标签」
+- 版本 1.0.1 → 1.0.2
+
 ### 修复
+- **左侧导航没有入口（插件装了等于没装）**：`P()` 只认 `window.PluginAPI`，但宿主是用 `new Function('plugin', 'PluginAPI', code)` 执行 `plugin.js` 的 —— 这两个名字是**函数参数**，不是 window 上的属性，于是 `P()` 恒为 `null`：入口按钮、菜单项、四个钩子、任务投影全部静默跳过。现象就是「插件显示已启用，左边栏却什么都没有」，且控制台无报错。改为按 `PluginAPI`（函数参数）→ `plugin` → `window.PluginAPI`（老宿主）的顺序取；测试改为照抄宿主的 `new Function` 注入方式（原来直接挂 `window.PluginAPI`，正好把这个 bug 盖住了），并补上「钩子已注册」断言
+- **宿主告警「Attempts to use Node.js APIs without permission - will fail」**：`src/i18n.js` 给单测用的 UMD Node 分支里有 `require('fs')`，被原样内联进 `dist/plugin.js` 与 `dist/index.html`，命中宿主 `plugin-security.ts` 的静态检查（`/require\s*\(\s*['"`](fs|child_process)/`）。四个 UMD 模块的 Node 分支改由 `/* node-only:start|end */` 包裹，`build.js` 打包时整段剥离，并新增 `assertNoNodeApis()` 产物闸门（`require()` / `module.exports` / `__dirname` / `__filename` / `process.xxx` / `Buffer.from` 任一命中即构建失败）；`static.test.js` 对两份产物各钉 5 条断言
 - **纪念日周年数多算一年，且不带零头天数**：原来取的是「下次发生那天的年份差」，而下次发生日必然在已过的周年之后，于是 1 年 34 天显示成「2 周年」。改为按「截至今天已满几个整年 + 零头天数」计算（新增 `Core.anniversarySpan()`，`anniversaryYears()` 保留为只取整年的薄封装），显示为「1 周年 34 天」；不满一年不显示周年与零头，只显示已过天数。公历与农历纪念日都适用，2 月 29 日按 2 月 28 日过
 - **项目已存在时，新提醒任务落到收件箱**：`findProject()` 返回的已经是项目 id 字符串，`ensureProject()` 却按对象取 `.id`，拿到 `undefined` 就传给 `addTask` —— 只要「纪念日提醒」项目已存在（首次运行之后都是如此），之后每条新任务的 `projectId` 都是空的，同时 `projectIdCache` 被写坏，项目改名后沿用旧项目的那段防重复逻辑也跟着失效。改为直接用返回值（补 `[3.1]` 用例）
 - **语言包文案未转义就拼进 innerHTML**：`FESTIVAL_GROUPS`（取自 `group.*`）、倒数单位、进度条合计等几处与紧邻的 `esc(t(...))` 写法不一致。语言包按 `src/i18n.js` 的设定属第三方可贡献内容，统一补 `esc()`；`static.test.js` 增加静态约束，拼标签的行里 `t('...')` 必须包在 `esc()` / `I.html()` 内
 - **农历换算晚于 2100 年腊月末返回脏数据**：早于 1900-01-31 有 `outOfRange` 哨兵，上界没有 —— 下标被钳到末年后循环溢出，返回「腊月 + 几百号」。补上界哨兵，`renderHero` 遇到 `outOfRange` 改显示「超出可算年限」
 - **农历小月的「除夕」无法正常编辑**：预设以「腊月三十」存，编辑年份若腊月只有 29 天，日控件没有 30 这个选项，强行赋值会让 `select.value` 变成空串 —— 预览报「这个农历日期不存在」，保存却靠核心逻辑回落。改为由 `buildDaySelect` 按当月天数钳好，预览与保存统一走 `Core.resolveLunar()` 口径（小月提示「按廿九计」），保存后仍保留腊月三十语义
-- **主题观察器监听自己写入的属性**：`data-cd-theme` 是 `detectTheme()` 自己写的，留在 `attributeFilter` 里会让每次主题切换多触发一轮 `getComputedStyle`，移除
+- **主题观察器监听自己写入的属性**：`data-ml-theme` 是 `detectTheme()` 自己写的，留在 `attributeFilter` 里会让每次主题切换多触发一轮 `getComputedStyle`，移除
 
 ### 变更
+- **明确 `Milestone` / `Milestones` 的用法（名称归口）**：同一对象三层名字各管一段，不再互相统一 —— ①身份层 `milestone` / `sp-milestone`（`manifest.id`、`package.json.name`、同步数据归属、安装包名）**永不改**；②品牌层一律单数 `Milestone`（清单显示名、左侧入口、英文界面名、README 标题），不加 s、不翻译；③名词层跟着语言与语法走（中文「里程碑」、英文小写 `milestones` 指多个），**只作用于正文与任务项目名**。因此英文 `appName` 从 `Milestones` 收成 `Milestone`（与清单/入口一致），`set.clear` 文案同步；任务项目名 `taskProject` 英文仍是复数 `Milestones`（它是装任务的容器，且已写进老用户数据，改默认值会凭空多出一个项目）。规则写进 README「命名约定 / Naming」，`static.test.js` 增加 5 条断言（清单名、入口名、中英文界面名、项目名例外）钉住不再漂移
+- **入口只留左侧导航一条**：之前同时调了 `registerSidePanelButton`，它注册的是**顶栏**按钮（添加任务 / 开始专注 / 同步 那一排），与左侧入口重复。现在只注册 `registerMenuEntry`，顶栏不再出现插件的第二个入口（`reminder.test.js` 钉住 `sidePanel` 注册次数为 0）
+- **入口名固定为 `Milestone`**：宿主没有「改已注册入口名称」的接口，名称注册时写死，跟随语言只会在切换后长期停在旧语言上；而 `Milestone` 中英文用户都认得出（反过来英文用户读不懂「里程碑」）。随之删掉 `relabelEntries` / `syncEntries` / 重启提示条这套改不动的改名逻辑，语言包的 `nav.reload` / `nav.reloadHint` 一并移除
+- **筛选条窄屏自动换行**：`.ml-chips` 原来是 `overflow-x: auto` + 隐藏滚动条，窄屏上后几个分类（节日 / 归档）被压在可视区外，既看不到滚动条也很难拖。改为 `flex-wrap: wrap`，一行放不下就折行，去掉横向滚动与滚动条隐藏规则
 - **设置 > 关于补齐作者与反馈入口**：原来只有一行「名称 v版本」。现在是一张浅底信息卡，三行分别是版本、作者 `calmpunct`、反馈地址（`https://github.com/calmpunct/sp-milestone/issues`，可点，`target="_blank"` + `rel="noopener noreferrer"` 新窗口打开，长地址按需折行）。作者与反馈是固定信息，直接写在模板里，只有标签走语言包（新增 `about.author` / `about.feedback`）；`dom.test.js` 与 `static.test.js` 各自钉住「作者名 + 反馈地址 + 新窗口」不被改丢
 - **自包含检查放行外链跳转**：原规则「`index.html` 里不得出现 `src=`/`href=` 加 http(s)」会把反馈地址这类 `<a>` 一并拦掉。改为只拦会发起请求的写法（任意标签的 `src=`、`<link href=>`），`<a href>` 放行但必须带 `target="_blank"` 与 `rel="noopener"`；规则收在 `build.js` 的 `externalRefIssues()` 里，构建与 `static.test.js` 共用同一份
-- **三天内不用数字，改说「今天 / 明天 / 后天」**：剩余 0/1/2 天时数字位直接显示文字，比「0 剩余天数」直观。列表里文字状态不再挂「剩余天数」单位（避免读成两遍），3 天以上仍是数字 + 单位；置顶卡片的句式同步从「距离 X 还有」换成「X 就是 / 就在」，大数字换成文字并单独收了字号（`.cd-hero-num--word` / `.cd-item-num b.is-word`）。生日、节日、纪念日的前置情形共用同一口径（都是「还有多少天」），文案键 `when.0/1/2`、`hero.todayLabel`、`hero.soonLabel`。判断只落在展示层：`event-core` 仍只返回数字 `days`，`app.js` 的 `remainDisplay(days)` 统一翻译，列表与置顶卡片共用，数据层与提醒任务一行未改
+- **三天内不用数字，改说「今天 / 明天 / 后天」**：剩余 0/1/2 天时数字位直接显示文字，比「0 剩余天数」直观。列表里文字状态不再挂「剩余天数」单位（避免读成两遍），3 天以上仍是数字 + 单位；置顶卡片的句式同步从「距离 X 还有」换成「X 就是 / 就在」，大数字换成文字并单独收了字号（`.ml-hero-num--word` / `.ml-item-num b.is-word`）。生日、节日、纪念日的前置情形共用同一口径（都是「还有多少天」），文案键 `when.0/1/2`、`hero.todayLabel`、`hero.soonLabel`。判断只落在展示层：`event-core` 仍只返回数字 `days`，`app.js` 的 `remainDisplay(days)` 统一翻译，列表与置顶卡片共用，数据层与提醒任务一行未改
 - **精简设置面板文案**：删掉语言下方的「自动跟随应用语言」说明、整块「说明」分组、以及「关于」里的项目名与同步描述（只留 `名称 v版本`）
 - **移除设置里的删除线开关**：过期倒数日默认就带删除线（过期即视为这件事已经结束，划线是常态，不需要开关）。设置面板少一个分组、`settings` 少一个 `strikeExpired` 字段；旧数据里残留的该字段在规范化时被丢弃
 - 打开了「过期后重新开始倒数」的倒数日永远算剩余天数、不会过期，因此不划线（判定沿用 `isExpiredCountdown`，与「已过天数」口径一致）
 - 同步删除语言包里的 `set.display` / `set.strike` / `set.strikeHint` / `set.legend` / `set.legendHint` / `lang.hint` 文案
+
+### 重构
+- **按新软件重排命名，去掉全部历史包裹**：这个插件还没发布、没有用户，凡是"为了兼容旧版本/旧数据"的分支一律删掉，命名统一到一个前缀 ——
+  - 前缀 `cd-` → **`ml-`** 全量替换：CSS 类名与变量（`--cd-*` → `--ml-*`）、DOM id（`cdChips` → `mlChips`）、`data-ml-theme`、`localStorage` 键（`ml-remind-seen` / `ml-task-map-v1` / `ml-handled-v1` / `ml-local-v1`）、任务备注标记 `ml:ev=…`。`static.test.js` 新增守卫，`cd-` / `cd:ev` 再出现即失败
+  - 删掉宿主的兼容分支：`P()` 只取 `new Function('plugin','PluginAPI',…)` 注入的 `PluginAPI` 参数（不再兜 `window.PluginAPI` / `plugin`）；`hostLang()` 只认 `getCurrentLanguage()`（去掉 `cfg.lang` 的字符串/`{code}` 两种形态）；`payloadLang()` 只取载荷里的 `code`；`onReady` / `onUnload` 直接注册（去掉"没有就 setTimeout 兜底"的双通道）
+  - 删掉死代码：`reminder-tasks.js` 里没人用的 `PROJECT_TITLE`；`app.js` 里等 `window.PluginAPI` 出现的最多 2 秒轮询（宿主保证在脚本前注入，直接打开 `dist/index.html` 调试则走 localStorage）
+  - 数据版本 `version: 6` → `1`（此前并无迁移代码，纯属历史编号）
+  - 注释里"19.x / 老宿主 / 旧版本宿主"这类版本判断全部清掉，改成描述当前行为
+  - 最低宿主版本 `minSupVersion` **14.0.0 → 19.0.0**：只按 19 的插件 API 写（`getCurrentLanguage` / `onReady` / `onUnload`），宿主对它是硬校验，低于该版本直接拒绝安装；README 中英两处写明要求，`static.test.js` 钉住「清单值 == README 值」
 
 ## 1.0.0
 

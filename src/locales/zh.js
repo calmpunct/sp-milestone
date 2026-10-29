@@ -22,7 +22,6 @@
 
     /* ---------------- 身份 ---------------- */
     appName: "里程碑",
-    projectDefault: "里程碑提醒",
     about: "{name} v{ver}",
     'about.author': "作者",
     'about.feedback': "反馈",
@@ -109,8 +108,6 @@
     filterAria: "筛选",
     lang: "语言",
     'lang.auto': "自动",
-    'nav.reloadHint': "左侧菜单名称要重启后才会变成「{name}」",
-    'nav.reload': "重启",
 
     /* ---------------- 筛选条 ---------------- */
     'chip.all': "全部",
@@ -173,6 +170,7 @@
     'sheet.edit': "编辑事项",
     'form.name': "名称",
     'form.namePh': "例如：妈妈生日",
+    'form.nameRequired': "请填写名称",
     'form.kind': "类型",
     'form.preset': "预设节日",
     'form.presetHint': "选一个节日会自动填好日期和颜色；选「自定义」自己填。",
@@ -218,8 +216,8 @@
 
     /* ---------------- 提醒说明 ---------------- */
     'remind.hintArchived': "已归档：不在「全部」里显示，也不会提醒，任务列表里的对应任务会被删除。",
-    'remind.hintBoth': "到期在「{p}」生成任务，并在打开应用时弹提示条。",
-    'remind.hintTask': "到期在「{p}」生成一条任务，随应用同步；关掉即删除。",
+    'remind.hintBoth': "到期在收件箱生成任务，并打上「{t}」标签；打开应用时还会弹提示条。",
+    'remind.hintTask': "到期在收件箱生成一条任务，打上「{t}」标签，随应用同步；关掉即删除。",
     'remind.hintSnack': "只在打开应用时弹提示条；插件没有后台推送，应用没开就不提示。",
     'remind.hintNone': "该事项不会提醒你（两个渠道都关着）。",
 

@@ -14,9 +14,9 @@
 
   var I = window.I18N;
 
-  var SEEN_KEY = 'cd-remind-seen';
-  var MAP_KEY = 'cd-task-map-v1';
-  var DONE_KEY = 'cd-handled-v1';
+  var SEEN_KEY = 'ml-remind-seen';
+  var MAP_KEY = 'ml-task-map-v1';
+  var DONE_KEY = 'ml-handled-v1';
   var CHECK_EVERY = 10 * 60 * 1000; // 10 分钟复查一次，覆盖跨午夜场景
   var KEEP_DAYS = 120;
   var DONE_KEEP_DAYS = 800;         // 已处理记录保留到下一个年度周期，防止归档后被重建
@@ -26,6 +26,8 @@
   /* ---------------- 语言 ---------------- */
 
   var hostLangCode = '';
+  // 软件里设定的语言（globalConfig.localization.lng）；空串 = 设成「跟随系统」
+  var hostLangSetting = '';
 
   function navLang() {
     try {
@@ -37,30 +39,48 @@
 
   /**
    * 宿主应用的语言，也就是「软件里设定的语言」。
-   * 19.x 的 PluginAPI.cfg 只有 { theme, appVersion, platform, isDev }，根本没有 lang 字段，
-   * 所以首选 getCurrentLanguage()；老版本宿主 / 测试桩可能只给 cfg.lang（字符串或 { code }）。
-   * 最后才退回系统语言。
+   * 不能只信 getCurrentLanguage()：语言设成「跟随系统」时宿主配置里 lng 为空，
+   * 插件 i18n 的信号量停在默认值 en，中文界面也会回报 'en'。
+   * 因此设定值（异步补读）优先，取不到才用钩子载荷 / getCurrentLanguage / 系统语言。
    */
   function hostLang() {
     var api = P();
+    var cur = '';
     try {
-      if (api && typeof api.getCurrentLanguage === 'function') {
-        var cur = api.getCurrentLanguage();
-        if (cur) return cur;
-      }
-      if (api && api.cfg) {
-        var c = api.cfg.lang;
-        if (c && typeof c === 'object' && c.code) return c.code;
-        if (typeof c === 'string' && c) return c;
-      }
-    } catch (e) { /* 旧版本宿主没有这些字段 */ }
-    return hostLangCode || navLang();
+      if (api && typeof api.getCurrentLanguage === 'function') cur = api.getCurrentLanguage() || '';
+    } catch (e) { /* 语言未就绪时继续用兜底值 */ }
+    return I.pickHostLang({
+      setting: hostLangSetting,
+      cur: cur,
+      switched: hostLangCode,
+      nav: navLang()
+    });
   }
 
-  /** languageChange 的载荷：{ code, newLanguage }，不同版本给的字段不同，两个都认 */
+  /**
+   * 补读「软件里设定的语言」，只更新缓存，不自己切语言
+   * （调用方拿到 true 之后再用已知的 settings 调一次 applyLang，避免与数据读取抢顺序）。
+   * @returns {Promise<boolean>} 设定值是否发生变化
+   */
+  function primeHostLang() {
+    var api = P();
+    if (!api || typeof api.getAppState !== 'function') return Promise.resolve(false);
+    return Promise.resolve(api.getAppState()).then(function (st) {
+      var cfg = st && st.globalConfig;
+      var loc = cfg && cfg.localization;
+      var lng = loc && typeof loc.lng === 'string' ? loc.lng : '';
+      if (lng === hostLangSetting) return false;
+      hostLangSetting = lng;
+      return true;
+    }, function () { return false; });
+  }
+
+  /**
+   * languageChange 的载荷：{ code, newLanguage }。
+   * 两个字段都取 —— 实测切回同一批语言时宿主只带 newLanguage，只认 code 会一直用上一次的值。
+   */
   function payloadLang(payload) {
     if (!payload) return '';
-    if (typeof payload === 'string') return payload;
     return payload.code || payload.newLanguage || '';
   }
 
@@ -80,7 +100,7 @@
   var stopped = false;
   var reconciling = false;
   var pendingReason = null;
-  var projectIdCache = null;
+  var tagIdCache = null;
 
   // 上一次解析过的原始数据：内容没变就不重复 JSON.parse + normalize
   var rawKey = '';
@@ -113,99 +133,39 @@
     return true;
   }
 
-  function P() {
-    return window.PluginAPI || null;
-  }
-
-  /* ---------------- 入口（侧栏按钮 / 菜单项） ----------------
-   * 名称是注册时写死的字符串，宿主没有「改已注册入口名称」的 API：
-   *   · registerMenuEntry 遇到同 id 不同名会再追加一条 —— 导航里就会多出一个入口
-   *   · registerSidePanelButton 按 pluginId 去重，重复注册直接被忽略
-   * 所以语言变化时不重复注册：宿主将来若提供原地改名接口就调用它，否则提示一次重启
-   * （重启会重新执行本脚本，入口名称自然换成新语言）。
-   */
-  var entryLabel = '';
-  var promptedLabel = '';
-
-  function entryCfg() {
-    return { label: I.t('appName'), icon: 'event', onClick: openView };
-  }
-
-  function registerEntries() {
-    var api = P();
-    if (!api) return;
-    var cfg = entryCfg();
-
-    try {
-      if (typeof api.registerSidePanelButton === 'function') {
-        api.registerSidePanelButton(cfg);
-      }
-    } catch (e) { /* ignore */ }
-    try {
-      if (typeof api.registerMenuEntry === 'function') {
-        api.registerMenuEntry(cfg);
-      }
-    } catch (e) { /* ignore */ }
-    entryLabel = cfg.label;
-  }
-
-  /** 原地改名：只在宿主提供了这类接口时才可能成功，返回是否改到 */
-  function relabelEntries() {
-    var api = P();
-    if (!api) return false;
-    var cfg = entryCfg();
-    var done = false;
-    try {
-      if (typeof api.updateSidePanelButton === 'function') {
-        api.updateSidePanelButton(cfg);
-        done = true;
-      }
-    } catch (e) { /* ignore */ }
-    try {
-      if (typeof api.updateMenuEntry === 'function') {
-        api.updateMenuEntry(cfg);
-        done = true;
-      }
-    } catch (e) { /* ignore */ }
-    return done;
-  }
-
-  function reloadApp() {
-    try { window.location.reload(); } catch (e) { /* ignore */ }
-  }
-
   /**
-   * 入口名称跟上当前语言。
-   * @param {boolean} ask 改不动时是否提示重启（启动阶段为 false：那时语言刚落定，
-   *   弹提示只会打扰用户，用户也没做任何操作）
+   * 宿主注入的 API。
+   * 宿主执行 plugin.js 是 new Function('plugin', 'PluginAPI', code)：API 是**函数参数**，
+   * 不在 window 上（window.PluginAPI 只在 iframe 里由宿主注入，见 app.js）。
    */
-  function syncEntries(ask) {
-    var label = I.t('appName');
-    if (!entryLabel || label === entryLabel) return;
-    if (relabelEntries()) { entryLabel = label; return; }
-    if (!ask) return;
-    if (promptedLabel === label) return;
-    promptedLabel = label;
+  function P() {
+    return typeof PluginAPI !== 'undefined' ? PluginAPI : null;
+  }
+
+  /* ---------------- 入口（左侧导航） ----------------
+   * 只注册一条菜单项 —— 这就是左侧导航里的那个入口。
+   * 不要再调 registerSidePanelButton：它注册的是**顶栏**按钮（添加任务 / 开始专注 /
+   * 同步 那一排），和左侧入口重复，用户会看到两个入口。
+   *
+   * 名称固定 "Milestone"：宿主不提供「改已注册入口名称」的接口，注册时写死就没法再变，
+   * 跟随语言只会在切换后长期停在旧语言上；而 Milestone 中英文用户都认得出
+   * （反过来英文用户读不懂「里程碑」）。
+   */
+  var ENTRY_LABEL = 'Milestone';
+
+  function registerEntry() {
+    var api = P();
+    if (!api || typeof api.registerMenuEntry !== 'function') return;
     try {
-      var actionLabel = I.t('nav.reload');
-      P().showSnack({
-        msg: I.t('nav.reloadHint', { name: label }),
-        type: 'INFO',
-        ico: 'event',
-        // 19.x 认的是 action.{label,onClick}；老宿主只认顶层的 actionStr / actionFn，
-        // 两套都写，谁都读到自己那份
-        action: { label: actionLabel, onClick: reloadApp },
-        actionStr: actionLabel,
-        actionFn: reloadApp
-      });
-    } catch (e) { /* 没有提示条能力就算了，下次启动一定是对的 */ }
+      api.registerMenuEntry({ label: ENTRY_LABEL, icon: 'event', onClick: openView });
+    } catch (e) { /* 注册失败只是没入口，不影响数据与提醒 */ }
   }
 
   function openView() {
     try {
       var api = P();
       if (api && typeof api.showIndexHtmlAsView === 'function') api.showIndexHtmlAsView();
-    } catch (e) { /* 旧版本宿主不支持全页视图 */ }
+    } catch (e) { /* 宿主拒绝打开时静默跳过 */ }
   }
 
   /* ---------------- 数据 ---------------- */
@@ -259,7 +219,7 @@
           dataCache = null;
           reconcile('data-changed');
         });
-      } catch (e) { /* 旧版本宿主无此钩子 */ }
+      } catch (e) { /* 单个钩子注册失败不影响其它钩子 */ }
     }
 
     // 任务在列表里被删掉时，提醒不该跟着消失 → 稍后重建
@@ -298,12 +258,13 @@
         api.registerHook(langKey, function (payload) {
           var code = payloadLang(payload);
           if (code) hostLangCode = code;
-          applyLang(dataCache && dataCache.settings);
-          syncEntries(true);
-          reconcile('language-change');
+          // 设定值可能刚写进 globalConfig：补读后再按新语言对账
+          primeHostLang().then(function () {
+            applyLang(dataCache && dataCache.settings);
+            reconcile('language-change');
+          });
         });
-      } catch (e) { /* ignore */ }
-    }
+      } catch (e) { /* ignore */ }    }
   }
 
   function scheduleRebuild(taskId) {
@@ -338,11 +299,11 @@
       }
       return Promise.resolve(pending).then(function (st) {
         var tasks = [];
-        var projects = [];
+        var tags = [];
         var k;
         if (st && st.tasks) for (k in st.tasks) if (Object.prototype.hasOwnProperty.call(st.tasks, k)) tasks.push(st.tasks[k]);
-        if (st && st.projects) for (k in st.projects) if (Object.prototype.hasOwnProperty.call(st.projects, k)) projects.push(st.projects[k]);
-        return { tasks: tasks, projects: projects };
+        if (st && st.tags) for (k in st.tags) if (Object.prototype.hasOwnProperty.call(st.tags, k)) tags.push(st.tags[k]);
+        return { tasks: tasks, tags: tags };
       }, function () {
         return readHostFallback();
       });
@@ -355,39 +316,49 @@
     var tasks = typeof api.getTasks === 'function'
       ? Promise.resolve(api.getTasks()).then(function (v) { return v || []; }, function () { return []; })
       : Promise.resolve([]);
-    var projects = typeof api.getAllProjects === 'function'
-      ? Promise.resolve(api.getAllProjects()).then(function (v) { return v || []; }, function () { return []; })
+    var tags = typeof api.getAllTags === 'function'
+      ? Promise.resolve(api.getAllTags()).then(function (v) { return v || []; }, function () { return []; })
       : Promise.resolve([]);
-    return Promise.all([tasks, projects]).then(function (r) {
-      return { tasks: r[0], projects: r[1] };
+    return Promise.all([tasks, tags]).then(function (r) {
+      return { tasks: r[0], tags: r[1] };
     });
   }
 
-  function findProject(projects, title) {
-    for (var i = 0; i < projects.length; i++) {
-      var p = projects[i];
-      if (p && p.title === title && p.id) return p.id;
+  /** 按名字找标签：先精确匹配，再忽略大小写（用户手动打过 Milestone 也认） */
+  function findTag(tags, title) {
+    var want = String(title || '').toLowerCase();
+    if (!want) return null;
+    var loose = null;
+    for (var i = 0; i < tags.length; i++) {
+      var g = tags[i];
+      if (!g || !g.id || typeof g.title !== 'string') continue;
+      if (g.title === title) return g.id;
+      if (!loose && g.title.toLowerCase() === want) loose = g.id;
     }
-    return null;
+    return loose;
   }
 
-  function ensureProject(projects, title) {
+  /**
+   * 拿到标签 id，没有就（可选地）建一个。
+   * 任务本身不传 projectId，宿主会落到收件箱 —— 不再创建「里程碑提醒」项目。
+   * @param {boolean} create 只查不建时传 false（没有任务要加时不要留个空标签）
+   */
+  function ensureTag(tags, title, create) {
     var api = P();
-    // findProject 返回的已经是项目 id（字符串），不要再取 .id
-    var hit = findProject(projects, title);
-    if (hit) { projectIdCache = hit; return Promise.resolve(hit); }
+    var name = title || EventCore.TAG_DEFAULT;
+    var hit = findTag(tags, name);
+    if (hit) { tagIdCache = hit; return Promise.resolve(hit); }
 
-    // 数据里配置的项目名被改过时，沿用上次创建的项目，避免重复建
-    if (projectIdCache) {
-      for (var i = 0; i < projects.length; i++) {
-        if (projects[i] && projects[i].id === projectIdCache) return Promise.resolve(projectIdCache);
+    // 标签名被改过时沿用上次建的那个，避免每轮都新建
+    if (tagIdCache) {
+      for (var i = 0; i < tags.length; i++) {
+        if (tags[i] && tags[i].id === tagIdCache) return Promise.resolve(tagIdCache);
       }
     }
-
-    if (typeof api.addProject !== 'function') return Promise.resolve(null);
-    return Promise.resolve(api.addProject({ title: title })).then(function (id) {
-      projectIdCache = id || null;
-      return projectIdCache;
+    if (!create || typeof api.addTag !== 'function') return Promise.resolve(null);
+    return Promise.resolve(api.addTag({ title: name })).then(function (id) {
+      tagIdCache = id || null;
+      return tagIdCache;
     }, function () { return null; });
   }
 
@@ -523,8 +494,32 @@
           });
         }
 
-        // 4. 执行：先补备注、再删、再改、最后加，避免标题重复和引用悬空
+        // 4. 执行：先定标签、再补备注、再删、再改、最后加，避免标题重复和引用悬空
         var seq = Promise.resolve();
+
+        // 4.1 标签：任务不传 projectId（宿主落收件箱），靠标签归类。
+        //     只在确实有任务要留在列表里时才创建，免得用户删光事项后留下一个空标签。
+        var tagId = null;
+        seq = seq.then(function () {
+          // 标签只在「真有任务要留在列表里」时创建：事项全删光后不该留一个空标签
+          var keep = 0;
+          for (var n = 0; n < managed.length; n++) if (!removeSeen[managed[n].id]) keep++;
+          return ensureTag(host.tags, settings.taskTag, plan.add.length > 0 || keep > 0).then(function (id) {
+            tagId = id;
+          }, function () { tagId = null; });
+        });
+
+        /** 给 update 补丁补上标签；已有该标签时原样返回，不做无谓写入 */
+        function withTag(patch, currentTags) {
+          if (!tagId) return patch;
+          var cur = Array.isArray(currentTags) ? currentTags.slice() : [];
+          if (cur.indexOf(tagId) !== -1) return patch;
+          cur.push(tagId);
+          var out = {};
+          for (var key in patch) if (Object.prototype.hasOwnProperty.call(patch, key)) out[key] = patch[key];
+          out.tagIds = cur;
+          return out;
+        }
 
         function queueRemove(id) {
           if (!id || removeSeen[id]) return;
@@ -557,29 +552,39 @@
           });
         });
 
+        var patched = Object.create(null);
         plan.update.forEach(function (u) {
+          patched[u.task.id] = true;
           seq = run(seq, function () {
-            return Promise.resolve(api.updateTask(u.task.id, u.patch)).then(null, function () {});
+            return Promise.resolve(api.updateTask(u.task.id, withTag(u.patch, u.task.tagIds)))
+              .then(null, function () {});
           });
         });
 
-        var projectId = null;
-        if (plan.add.length) {
-          seq = seq.then(function () {
-            return ensureProject(host.projects, settings.taskProject).then(function (id) {
-              projectId = id;
-            }, function () { projectId = null; });
+        // 4.2 老数据迁移：早先建在「里程碑提醒」项目里的任务没法安全搬项目
+        //     （宿主改 projectId 不会同步项目侧的 taskIds，任务会两头对不上），
+        //     这里只补标签，让它能按标签统一筛出来；任务原地不动。
+        managed.forEach(function (t) {
+          if (patched[t.id] || removeSeen[t.id]) return;
+          seq = run(seq, function () {
+            if (!tagId) return Promise.resolve();
+            var cur = Array.isArray(t.tagIds) ? t.tagIds : [];
+            if (cur.indexOf(tagId) !== -1) return Promise.resolve();
+            return Promise.resolve(api.updateTask(t.id, { tagIds: cur.concat(tagId) }))
+              .then(null, function () {});
           });
-        }
+        });
 
         plan.add.forEach(function (a) {
           seq = run(seq, function () {
-            return Promise.resolve(api.addTask({
+            var payload = {
               title: a.title,
               notes: a.notes,
-              dueDay: a.dueDay,
-              projectId: projectId
-            })).then(function (id) {
+              dueDay: a.dueDay
+            };
+            // 只给标签、不给 projectId：任务落到收件箱
+            if (tagId) payload.tagIds = [tagId];
+            return Promise.resolve(api.addTask(payload)).then(function (id) {
               if (id) { map[id] = a.eventId; mapDirty = true; }
             }, function () { /* 单条失败不影响其它 */ });
           });
@@ -694,20 +699,23 @@
     dataCache = null;
     rawKey = '';
     rawValue = null;
-    projectIdCache = null;
+    tagIdCache = null;
     selfDeleted = Object.create(null);
   }
 
   /* ---------------- 启动 ---------------- */
 
-  registerEntries();
+  registerEntry();
   watchData();
 
-  // 启动时就先读一次数据，只为把语言定下来：入口名称在注册时写死，越早按正确语言取词越好。
+  // 启动时先读一次数据：拿到 settings.lang 后文案才定下来，boot 里的提示条也能直接用缓存。
   // 提醒 / 任务投影仍然等 boot 的 3.5 秒后再动，避免和宿主启动提示抢镜。
-  loadData().then(function (d) {
-    dataCache = d;
-    syncEntries(false);
+  // 语言设定值（globalConfig.localization.lng）也在这时补读：跟随系统时宿主只会回报默认值 en，
+  // 不补读的话任务标题会一直是英文。
+  Promise.all([loadData(), primeHostLang()]).then(function (r) {
+    dataCache = r[0];
+    // 语言设定值晚到：按它重算一次（此时才有 settings 可用，不会覆盖用户的语言偏好）
+    if (r[1]) applyLang(dataCache.settings);
   }, function () { /* 读不到就继续用宿主语言，等 boot 再来 */ });
 
   function boot() {
@@ -721,19 +729,8 @@
     }, 3500);
   }
 
-  try {
-    if (P() && typeof P().onReady === 'function') {
-      P().onReady(boot);
-    } else {
-      setTimeout(boot, 3500);
-    }
-  } catch (e) {
-    setTimeout(boot, 3500);
-  }
-
-  try {
-    if (typeof plugin !== 'undefined' && plugin && typeof plugin.onUnload === 'function') {
-      plugin.onUnload(stopAll);
-    }
-  } catch (e) { /* ignore */ }
+  // 宿主在脚本执行完后回调 onReady（此时 IPC 桥已就绪），onUnload 用来清定时器；
+  // 两者都是 API 的标配，直接注册即可。
+  P().onReady(boot);
+  P().onUnload(stopAll);
 })();

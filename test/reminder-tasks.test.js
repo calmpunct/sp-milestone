@@ -38,7 +38,7 @@ eq(d1.title, '🎂 妈妈生日（56岁）', '标题带类型图标与年龄');
 eq(d1.dueDay, '2027-05-11', '到期日 = 事件日 - 最近的提醒档位（提前 3 天）');
 eq(d1.offset, 3, '选中的是提前 3 天档位');
 eq(d1.cycle, '2027-05-14', '周期记的是事件发生日');
-ok(d1.notes.includes('cd:ev=e1;cy=2027-05-14'), '备注带机器标记');
+ok(d1.notes.includes('ml:ev=e1;cy=2027-05-14'), '备注带机器标记');
 ok(d1.notes.includes('提前 3 天提醒'), '备注写清档位');
 
 const ann = mk({ id: 'e2', kind: 'anniversary', title: '结婚纪念日', date: '2018-06-16', remind: { task: true, snack: false, offsets: [7, 30] } });
@@ -126,7 +126,7 @@ eq(p.add.length, 0, '本轮已完成 → 不重复创建');
 // 跨年：换到下一个周期时重新打开
 const doneLastYear = [task({
   id: 't1', title: '🎂 妈妈生日（54岁）',
-  notes: '生日 · 2026-05-14 · 每年\n提前 3 天提醒 · 应处理日 2026-05-11\ncd:ev=e1;cy=2026-05-14',
+  notes: '生日 · 2026-05-14 · 每年\n提前 3 天提醒 · 应处理日 2026-05-11\nml:ev=e1;cy=2026-05-14',
   dueDay: '2026-05-11', isDone: true, created: 1
 })];
 p = RT.plan({ events: [mom], existing: doneLastYear, today: TODAY });
@@ -149,9 +149,9 @@ eq(p.add.length, 0, '不会因为重复而新建');
 console.log('[8] 标记解析');
 eq(RT.parseMark(undefined), null, '备注缺失');
 eq(RT.parseMark('随便写点'), null, '普通备注');
-eq(RT.parseMark('cd:ev=e1;cy=2026-05-14').eventId, 'e1', '解析事件 id');
-eq(RT.parseMark('cd:ev=e1;cy=2026-05-14').cycle, '2026-05-14', '解析周期');
-eq(RT.parseMark('前缀\ncd:ev=a:b;cy=2026-01-02\n后缀').eventId, 'a:b', '备注被编辑过也能认出来');
+eq(RT.parseMark('ml:ev=e1;cy=2026-05-14').eventId, 'e1', '解析事件 id');
+eq(RT.parseMark('ml:ev=e1;cy=2026-05-14').cycle, '2026-05-14', '解析周期');
+eq(RT.parseMark('前缀\nml:ev=a:b;cy=2026-01-02\n后缀').eventId, 'a:b', '备注被编辑过也能认出来');
 
 /* ---------------- 9. 空数据安全 ---------------- */
 

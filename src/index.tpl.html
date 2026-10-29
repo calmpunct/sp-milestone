@@ -4,28 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<meta name="cd-version" content="__CD_VERSION__">
-<title data-i18n="appName">__CD_NAME__</title>
+<meta name="ml-version" content="__ML_VERSION__">
+<title data-i18n="appName">__ML_NAME__</title>
 <style>
 /*INJECT_STYLES*/
 </style>
 </head>
 <body>
 
-<div class="cd-app">
-  <header class="cd-topbar">
+<div class="ml-app">
+  <header class="ml-topbar">
     <div>
-      <h1 class="cd-title" data-i18n="appName"></h1>
-      <p class="cd-sub" id="cdSub" data-i18n="loading"></p>
+      <h1 class="ml-title" data-i18n="appName"></h1>
+      <p class="ml-sub" id="mlSub" data-i18n="loading"></p>
     </div>
-    <div class="cd-actions">
-      <button class="cd-icon-btn" id="cdSettings" type="button" aria-label="设置" title="设置"
+    <div class="ml-actions">
+      <button class="ml-icon-btn" id="mlSettings" type="button" aria-label="设置" title="设置"
               data-i18n-aria="settings" data-i18n-title="settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
 <path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>
 </svg>
       </button>
-      <button class="cd-add" id="cdAdd" type="button" aria-label="添加事项" data-i18n-aria="addAria">
+      <button class="ml-add" id="mlAdd" type="button" aria-label="添加事项" data-i18n-aria="addAria">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14"/>
         </svg>
@@ -34,39 +34,40 @@
     </div>
   </header>
 
-  <section id="cdHero" aria-live="polite"></section>
+  <section id="mlHero" aria-live="polite"></section>
 
-  <div class="cd-chips" id="cdChips" role="group" aria-label="筛选" data-i18n-aria="filterAria">
-    <button type="button" class="cd-chip" data-f="all" aria-pressed="true" data-i18n="chip.all"></button>
-    <button type="button" class="cd-chip" data-f="birthday" aria-pressed="false" data-i18n="chip.birthday"></button>
-    <button type="button" class="cd-chip" data-f="anniversary" aria-pressed="false" data-i18n="chip.anniversary"></button>
-    <button type="button" class="cd-chip" data-f="countdown" aria-pressed="false" data-i18n="chip.countdown"></button>
-    <button type="button" class="cd-chip" data-f="festival" aria-pressed="false" data-i18n="chip.festival"></button>
-    <button type="button" class="cd-chip" data-f="archive" aria-pressed="false" data-i18n="chip.archive"></button>
+  <div class="ml-chips" id="mlChips" role="group" aria-label="筛选" data-i18n-aria="filterAria">
+    <button type="button" class="ml-chip" data-f="all" aria-pressed="true" data-i18n="chip.all"></button>
+    <button type="button" class="ml-chip" data-f="birthday" aria-pressed="false" data-i18n="chip.birthday"></button>
+    <button type="button" class="ml-chip" data-f="anniversary" aria-pressed="false" data-i18n="chip.anniversary"></button>
+    <button type="button" class="ml-chip" data-f="countdown" aria-pressed="false" data-i18n="chip.countdown"></button>
+    <button type="button" class="ml-chip" data-f="festival" aria-pressed="false" data-i18n="chip.festival"></button>
+    <button type="button" class="ml-chip" data-f="archive" aria-pressed="false" data-i18n="chip.archive"></button>
   </div>
 
-  <main class="cd-list" id="cdList"></main>
+  <main class="ml-list" id="mlList"></main>
 </div>
 
-<div id="cdLayer" hidden>
-  <div class="cd-mask" id="cdMask"></div>
-  <div class="cd-sheet" id="cdSheet" role="dialog" aria-modal="true" aria-labelledby="cdSheetTitle">
-    <div class="cd-sheet-head">
-      <button type="button" id="cdCancel" data-i18n="cancel"></button>
-      <h2 id="cdSheetTitle" data-i18n="sheet.newDefault"></h2>
-      <button type="button" class="cd-strong" id="cdSave" data-i18n="save"></button>
+<div id="mlLayer" hidden>
+  <div class="ml-mask" id="mlMask"></div>
+  <div class="ml-sheet" id="mlSheet" role="dialog" aria-modal="true" aria-labelledby="mlSheetTitle">
+    <div class="ml-sheet-head">
+      <button type="button" id="mlCancel" data-i18n="cancel"></button>
+      <h2 id="mlSheetTitle" data-i18n="sheet.newDefault"></h2>
+      <button type="button" class="ml-strong" id="mlSave" data-i18n="save"></button>
     </div>
-    <div class="cd-sheet-body">
+    <div class="ml-sheet-body">
 
-      <label class="cd-field" id="fTitleWrap">
-        <span class="cd-label" data-i18n="form.name"></span>
-        <input class="cd-input" id="fTitle" type="text" maxlength="40" placeholder=""
-               data-i18n-ph="form.namePh" autocomplete="off">
+      <label class="ml-field" id="fTitleWrap">
+        <span class="ml-label"><span data-i18n="form.name"></span><em class="ml-req" aria-hidden="true">*</em></span>
+        <input class="ml-input" id="fTitle" type="text" maxlength="40" placeholder=""
+               data-i18n-ph="form.namePh" autocomplete="off" required aria-required="true">
+        <span class="ml-err" id="fTitleErr" data-i18n="form.nameRequired" hidden></span>
       </label>
 
-      <div class="cd-field">
-        <span class="cd-label" data-i18n="form.kind"></span>
-        <div class="cd-seg" id="fKind">
+      <div class="ml-field">
+        <span class="ml-label" data-i18n="form.kind"></span>
+        <div class="ml-seg" id="fKind">
           <button type="button" data-v="birthday" data-i18n="kind.birthday"></button>
           <button type="button" data-v="anniversary" data-i18n="kind.anniversary"></button>
           <button type="button" data-v="countdown" data-i18n="kind.countdown"></button>
@@ -74,153 +75,153 @@
         </div>
       </div>
 
-      <div class="cd-field" id="fPresetWrap" hidden>
-        <span class="cd-label" data-i18n="form.preset"></span>
-        <div class="cd-presets" id="fPresets"></div>
-        <p class="cd-hint" id="fPresetHint" data-i18n="form.presetHint"></p>
+      <div class="ml-field" id="fPresetWrap" hidden>
+        <span class="ml-label" data-i18n="form.preset"></span>
+        <div class="ml-presets" id="fPresets"></div>
+        <p class="ml-hint" id="fPresetHint" data-i18n="form.presetHint"></p>
       </div>
 
-      <div class="cd-field" id="fCalendarWrap">
-        <span class="cd-label" data-i18n="form.calendar"></span>
-        <div class="cd-seg" id="fCalendar">
+      <div class="ml-field" id="fCalendarWrap">
+        <span class="ml-label" data-i18n="form.calendar"></span>
+        <div class="ml-seg" id="fCalendar">
           <button type="button" data-v="solar" data-i18n="form.solar"></button>
           <button type="button" data-v="lunar" data-i18n="form.lunar"></button>
         </div>
       </div>
 
-      <label class="cd-field" id="fSolarWrap">
-        <span class="cd-label" data-i18n="form.date"></span>
-        <input class="cd-input" id="fDate" type="date">
+      <label class="ml-field" id="fSolarWrap">
+        <span class="ml-label" data-i18n="form.date"></span>
+        <input class="ml-input" id="fDate" type="date">
       </label>
 
-      <div class="cd-field" id="fLunarWrap" hidden>
-        <span class="cd-label" data-i18n="form.lunarDate"></span>
-        <div class="cd-lunar-row">
-          <select class="cd-select" id="fLY" aria-label="农历年" data-i18n-aria="form.lunarYear"></select>
-          <select class="cd-select" id="fLM" aria-label="农历月" data-i18n-aria="form.lunarMonth"></select>
-          <select class="cd-select" id="fLD" aria-label="农历日" data-i18n-aria="form.lunarDay"></select>
+      <div class="ml-field" id="fLunarWrap" hidden>
+        <span class="ml-label" data-i18n="form.lunarDate"></span>
+        <div class="ml-lunar-row">
+          <select class="ml-select" id="fLY" aria-label="农历年" data-i18n-aria="form.lunarYear"></select>
+          <select class="ml-select" id="fLM" aria-label="农历月" data-i18n-aria="form.lunarMonth"></select>
+          <select class="ml-select" id="fLD" aria-label="农历日" data-i18n-aria="form.lunarDay"></select>
         </div>
-        <label class="cd-check" id="fLeapWrap">
+        <label class="ml-check" id="fLeapWrap">
           <input type="checkbox" id="fLeap">
           <span data-i18n="form.leap"></span>
         </label>
-        <p class="cd-hint" id="fLunarPreview"></p>
+        <p class="ml-hint" id="fLunarPreview"></p>
       </div>
 
-      <div class="cd-field" id="fRepeatWrap">
-        <span class="cd-label" data-i18n="form.countdown"></span>
-        <div class="cd-switch-row">
+      <div class="ml-field" id="fRepeatWrap">
+        <span class="ml-label" data-i18n="form.countdown"></span>
+        <div class="ml-switch-row">
           <span data-i18n="form.repeat"></span>
-          <label class="cd-switch">
+          <label class="ml-switch">
             <input type="checkbox" id="fRepeat">
             <i></i>
           </label>
         </div>
-        <p class="cd-hint" id="fRepeatHint" data-i18n="form.repeatHint"></p>
+        <p class="ml-hint" id="fRepeatHint" data-i18n="form.repeatHint"></p>
       </div>
 
-      <div class="cd-field" id="fRemindWrap">
-        <span class="cd-label" data-i18n="form.remind"></span>
-        <div class="cd-switch-row">
+      <div class="ml-field" id="fRemindWrap">
+        <span class="ml-label" data-i18n="form.remind"></span>
+        <div class="ml-switch-row">
           <span data-i18n="form.remindTask"></span>
-          <label class="cd-switch">
+          <label class="ml-switch">
             <input type="checkbox" id="fTask">
             <i></i>
           </label>
         </div>
-        <div class="cd-switch-row">
+        <div class="ml-switch-row">
           <span data-i18n="form.remindSnack"></span>
-          <label class="cd-switch">
+          <label class="ml-switch">
             <input type="checkbox" id="fSnack">
             <i></i>
           </label>
         </div>
-        <div class="cd-days" id="fOffsets">
+        <div class="ml-days" id="fOffsets">
           <button type="button" data-d="0" aria-pressed="false" data-i18n="offset.0"></button>
           <button type="button" data-d="1" aria-pressed="false" data-i18n="offset.1"></button>
           <button type="button" data-d="3" aria-pressed="false" data-i18n="offset.3"></button>
           <button type="button" data-d="7" aria-pressed="false" data-i18n="offset.7"></button>
           <button type="button" data-d="30" aria-pressed="false" data-i18n="offset.30"></button>
         </div>
-        <p class="cd-hint" id="fRemindHint"></p>
+        <p class="ml-hint" id="fRemindHint"></p>
       </div>
 
-      <div class="cd-field" id="fArchiveWrap">
-        <span class="cd-label" data-i18n="form.archive"></span>
-        <div class="cd-switch-row">
+      <div class="ml-field" id="fArchiveWrap">
+        <span class="ml-label" data-i18n="form.archive"></span>
+        <div class="ml-switch-row">
           <span data-i18n="form.archiveMove"></span>
-          <label class="cd-switch">
+          <label class="ml-switch">
             <input type="checkbox" id="fArchived">
             <i></i>
           </label>
         </div>
-        <p class="cd-hint" data-i18n="empty.archiveHint"></p>
+        <p class="ml-hint" data-i18n="empty.archiveHint"></p>
       </div>
 
-      <div class="cd-field" id="fColorWrap">
-        <span class="cd-label" data-i18n="form.color"></span>
-        <div class="cd-colors" id="fColors"></div>
+      <div class="ml-field" id="fColorWrap">
+        <span class="ml-label" data-i18n="form.color"></span>
+        <div class="ml-colors" id="fColors"></div>
       </div>
 
-      <label class="cd-field">
-        <span class="cd-label" data-i18n="form.note"></span>
-        <textarea class="cd-textarea" id="fNote" rows="2" maxlength="200" placeholder=""
+      <label class="ml-field">
+        <span class="ml-label" data-i18n="form.note"></span>
+        <textarea class="ml-textarea" id="fNote" rows="2" maxlength="200" placeholder=""
                   data-i18n-ph="form.notePh"></textarea>
       </label>
 
-      <button type="button" class="cd-danger" id="cdDelete" hidden data-i18n="form.delete"></button>
+      <button type="button" class="ml-danger" id="mlDelete" hidden data-i18n="form.delete"></button>
     </div>
   </div>
 </div>
 
-<div id="cdSetLayer" hidden>
-  <div class="cd-mask" id="cdSetMask"></div>
-  <div class="cd-sheet" role="dialog" aria-modal="true" aria-labelledby="cdSetTitle">
-    <div class="cd-sheet-head">
-      <button type="button" id="cdSetClose" data-i18n="close"></button>
-      <h2 id="cdSetTitle" data-i18n="settings"></h2>
-      <span class="cd-head-spacer" aria-hidden="true"></span>
+<div id="mlSetLayer" hidden>
+  <div class="ml-mask" id="mlSetMask"></div>
+  <div class="ml-sheet" role="dialog" aria-modal="true" aria-labelledby="mlSetTitle">
+    <div class="ml-sheet-head">
+      <button type="button" id="mlSetClose" data-i18n="close"></button>
+      <h2 id="mlSetTitle" data-i18n="settings"></h2>
+      <span class="ml-head-spacer" aria-hidden="true"></span>
     </div>
-    <div class="cd-sheet-body">
+    <div class="ml-sheet-body">
 
-      <div class="cd-field">
-        <span class="cd-label" data-i18n="lang"></span>
+      <div class="ml-field">
+        <span class="ml-label" data-i18n="lang"></span>
         <!-- 按钮由 app.js 按已注册的语言包生成：加一个语言包就多一个选项 -->
-        <div class="cd-seg" id="sLang"></div>
+        <div class="ml-seg" id="sLang"></div>
       </div>
 
-      <div class="cd-field">
-        <span class="cd-label" data-i18n="set.hero"></span>
-        <div class="cd-switch-row">
+      <div class="ml-field">
+        <span class="ml-label" data-i18n="set.hero"></span>
+        <div class="ml-switch-row">
           <span data-i18n="set.heroToggle"></span>
-          <label class="cd-switch">
+          <label class="ml-switch">
             <input type="checkbox" id="sHero">
             <i></i>
           </label>
         </div>
-        <p class="cd-hint" data-i18n-html="set.heroHint"><b>当前分区</b>排在最前的那一条；关掉则列表直接贴顶，一屏能多看几条。</p>
+        <p class="ml-hint" data-i18n-html="set.heroHint"><b>当前分区</b>排在最前的那一条；关掉则列表直接贴顶，一屏能多看几条。</p>
       </div>
 
-      <div class="cd-field">
-        <span class="cd-label" data-i18n="set.data"></span>
-        <p class="cd-hint" id="sDataInfo"></p>
-        <button type="button" class="cd-danger" id="sClear" data-i18n="set.clear"></button>
-        <p class="cd-hint" data-i18n-html="set.clearHint"><b>不会</b>影响应用里的其他任务与项目。</p>
+      <div class="ml-field">
+        <span class="ml-label" data-i18n="set.data"></span>
+        <p class="ml-hint" id="sDataInfo"></p>
+        <button type="button" class="ml-danger" id="sClear" data-i18n="set.clear"></button>
+        <p class="ml-hint" data-i18n-html="set.clearHint"><b>不会</b>影响应用里的其他任务与项目。</p>
       </div>
 
-      <div class="cd-field">
-        <span class="cd-label" data-i18n="set.about"></span>
+      <div class="ml-field">
+        <span class="ml-label" data-i18n="set.about"></span>
         <!-- 版本号由 app.js 按清单版本填入；作者与反馈地址是固定信息，直接写在模板里 -->
-        <div class="cd-about">
-          <p class="cd-about-row cd-about-row--ver" id="sAbout"></p>
-          <p class="cd-about-row">
-            <span class="cd-about-k" data-i18n="about.author"></span>
-            <span class="cd-about-v">calmpunct</span>
+        <div class="ml-about">
+          <p class="ml-about-row ml-about-row--ver" id="sAbout"></p>
+          <p class="ml-about-row">
+            <span class="ml-about-k" data-i18n="about.author"></span>
+            <span class="ml-about-v">calmpunct</span>
           </p>
-          <p class="cd-about-row">
-            <span class="cd-about-k" data-i18n="about.feedback"></span>
+          <p class="ml-about-row">
+            <span class="ml-about-k" data-i18n="about.feedback"></span>
             <!-- 外链只用于跳转，不加载任何外部资源；target/rel 避免把插件视图本身导航走 -->
-            <a class="cd-about-v cd-about-link"
+            <a class="ml-about-v ml-about-link"
                href="https://github.com/calmpunct/sp-milestone/issues"
                target="_blank" rel="noopener noreferrer">github.com/calmpunct/sp-milestone/issues</a>
           </p>
@@ -230,11 +231,11 @@
   </div>
 </div>
 
-<div class="cd-toast" id="cdToast" role="status" aria-live="polite"></div>
+<div class="ml-toast" id="mlToast" role="status" aria-live="polite"></div>
 
 <!-- 列表里的提醒铃铛：图标只定义一次，每条记录用 <use> 引用，省掉每条重复的路径数据 -->
 <svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true" focusable="false">
-  <symbol id="cd-bell-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  <symbol id="ml-bell-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
     <path d="M13.7 21a2 2 0 01-3.4 0"/>

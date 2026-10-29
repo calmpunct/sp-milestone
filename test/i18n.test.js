@@ -111,15 +111,28 @@ eq(I.resolve('auto', 'de'), 'en', '自动 + 未支持的语言 -> 英文兜底')
 eq(I.resolve(null, 'zh-TW'), 'zh', '没有偏好时按宿主语言（地区码归一）');
 eq(I.resolve('fr', 'zh'), 'zh', '偏好的语言没装 -> 回落到宿主语言');
 eq(I.resolve('auto', ''), 'en', '什么都拿不到 -> 英文兜底');
-// 宿主给的语言形态不止一种：字符串带地区码、{ code: ... } 对象、大小写混写都要认
+// 语言码形态：带地区码、大小写混写都要认（宿主 getCurrentLanguage() 返回字符串）
 eq(I.resolve('zh-CN', 'en'), 'zh', '偏好带地区码也能命中');
-eq(I.resolve('auto', { code: 'zh-TW' }), 'zh', '宿主给 { code } 结构也能归一');
+eq(I.resolve('auto', 'zh-TW'), 'zh', '宿主语言带地区码也能归一');
 eq(I.resolve('auto', 'EN-us'), 'en', '大小写不敏感');
-eq(I.resolve(null, { code: 'en-US' }), 'en', '没有偏好时按宿主的 { code } 解析');
+eq(I.resolve(null, 'en-US'), 'en', '没有偏好时按宿主语言解析');
+
+console.log('[4.1] 宿主语言判定（pickHostLang）');
+// 核心场景：软件语言设成「跟随系统」时，宿主配置里 lng 为空，getCurrentLanguage() 只会
+// 回报默认值 en —— 中文系统 + 中文界面却拿到 en。设定值（空）必须让位给系统语言。
+eq(I.pickHostLang({ setting: '', cur: 'en', nav: 'zh-CN' }), 'zh', '跟随系统时按系统语言（中文）');
+eq(I.pickHostLang({ setting: '', cur: 'en', nav: 'en-US' }), 'en', '跟随系统 + 英文系统 -> 英文');
+eq(I.pickHostLang({ setting: 'zh', cur: 'en', nav: 'en-US' }), 'zh', '设定值优先于系统的错误回报');
+eq(I.pickHostLang({ setting: 'en', cur: 'zh', nav: 'zh-CN' }), 'en', '软件显式设成英文就信英文（不猜系统）');
+eq(I.pickHostLang({ setting: 'zh-tw', cur: '', nav: '' }), 'zh', '设定值带地区码也能归一');
+eq(I.pickHostLang({ setting: '', cur: 'zh', nav: 'en-US' }), 'zh', '没有设定值时 getCurrentLanguage 的非默认值可信');
+eq(I.pickHostLang({ setting: '', cur: 'en', switched: 'zh', nav: 'en-US' }), 'zh', 'languageChange 载荷兜底');
+eq(I.pickHostLang({ setting: '', cur: '', nav: '' }), 'en', '全都拿不到 -> 英文');
+eq(I.pickHostLang(), 'en', '空参数不崩');
 
 console.log('[5] 取词与回落');
 I.setLang('en');
-eq(I.t('appName'), 'Milestones', '英文取词');
+eq(I.t('appName'), 'Milestone', '英文取词（品牌名单数）');
 eq(I.t('offset.3'), '3 days before', '英文档位文案');
 eq(I.t('years.n', { n: 7 }), '7 years', '占位符替换');
 eq(I.t('不存在的键'), '不存在的键', '未知键原样返回（便于发现漏配）');
@@ -142,9 +155,11 @@ eq(Core.WEEK[1], 'Mon', '星期名随语言切换');
 ok(Core.dateLabel({ calendar: 'lunar', lunar: { month: 8, day: 15 }, date: '2026-09-25' }).indexOf('Lunar') !== -1,
   '农历文案切换成英文');
 eq(Core.titleOf({ title: 'Mom', kind: 'birthday' }, 55), 'Mom (turning 55)', '年龄后缀切换成英文');
-eq(Core.emptySettings().taskProject, 'Milestones', '默认项目名跟随语言');
+// 标签名是宿主机里的实体标识，必须与语言无关：否则切一次语言就多一个同名标签
+eq(Core.emptySettings().taskTag, 'milestone', '标签名不随语言变（英文）');
 Core.setLang('zh');
-eq(Core.emptySettings().taskProject, '里程碑提醒', '默认项目名回到中文');
+eq(Core.emptySettings().taskTag, 'milestone', '标签名不随语言变（中文）');
+eq(Core.TAG_DEFAULT, 'milestone', '默认标签名常量');
 I.setLang('zh');
 
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);

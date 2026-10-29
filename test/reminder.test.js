@@ -34,9 +34,9 @@ function ev(o) {
 
 function data(events, settings) {
   return {
-    version: 2,
+    version: 1,
     // 固定中文文案（jsdom 的 navigator.language 是 en-US）
-    settings: Object.assign({ lang: 'zh', taskProject: '纪念日提醒' }, settings || {}),
+    settings: Object.assign({ lang: 'zh', taskTag: 'milestone' }, settings || {}),
     events: events
   };
 }
@@ -62,13 +62,13 @@ function boot(store, opts) {
   }
 
   // 任务表可以跨「重启」复用，模拟宿主持久化
-  const host = opts.host || { tasks: {}, projects: {}, seq: 0 };
+  const host = opts.host || { tasks: {}, tags: {}, seq: 0 };
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   const api = {
     Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', TASK_DELETE: 'taskDelete', TASK_COMPLETE: 'taskComplete', LANGUAGE_CHANGE: 'languageChange' },
     hooks: {},
-    onReady(fn) { fn(); },
+    onReady(fn) { fn(); }, onUnload() {},
     registerHook(name, fn) { api.hooks[name] = fn; },
     registerSidePanelButton(cfg) { regs.sidePanel++; regs.sideLabel = cfg && cfg.label; },
     registerMenuEntry(cfg) { regs.menu++; regs.menuLabel = cfg && cfg.label; },
@@ -78,17 +78,18 @@ function boot(store, opts) {
     persistDataSynced() { return Promise.resolve(); },
     log: { warn() {}, info() {}, err() {}, error() {}, log() {} },
     getAppState() {
-      return Promise.resolve({ tasks: clone(host.tasks), projects: clone(host.projects) });
+      return Promise.resolve({ tasks: clone(host.tasks), tags: clone(host.tags) });
     },
-    getAllProjects() { return Promise.resolve(Object.keys(host.projects).map((k) => clone(host.projects[k]))); },
+    getAllTags() { return Promise.resolve(Object.keys(host.tags).map((k) => clone(host.tags[k]))); },
     getTasks() { return Promise.resolve(Object.keys(host.tasks).map((k) => clone(host.tasks[k]))); },
     addTask(d) {
       const id = 'task_' + (++host.seq);
       host.tasks[id] = {
         id: id, title: d.title, notes: d.notes || '', dueDay: d.dueDay || null,
-        isDone: !!d.isDone, projectId: d.projectId || null, created: host.seq
+        isDone: !!d.isDone, projectId: d.projectId || null,
+        tagIds: Array.isArray(d.tagIds) ? d.tagIds.slice() : [], created: host.seq
       };
-      calls.push({ op: 'add', id: id });
+      calls.push({ op: 'add', id: id, tagIds: host.tasks[id].tagIds });
       return Promise.resolve(id);
     },
     updateTask(id, patch) {
@@ -102,10 +103,10 @@ function boot(store, opts) {
       calls.push({ op: 'delete', id: id });
       return Promise.resolve();
     },
-    addProject(d) {
-      const id = 'proj_' + (++host.seq);
-      host.projects[id] = { id: id, title: d.title, taskIds: [], backlogTaskIds: [] };
-      calls.push({ op: 'addProject', id: id });
+    addTag(d) {
+      const id = 'tag_' + (++host.seq);
+      host.tags[id] = { id: id, title: d.title, taskIds: [] };
+      calls.push({ op: 'addTag', id: id, title: d.title });
       return Promise.resolve(id);
     }
   };
@@ -120,16 +121,26 @@ function boot(store, opts) {
     delete api.deleteTask;
   }
 
-  w.PluginAPI = api;
   w.EventCore = Core;
 
   // 让启动延迟立刻生效，避免测试等 3.5 秒
   const realSetTimeout = w.setTimeout.bind(w);
   w.setTimeout = (fn, ms) => realSetTimeout(fn, Math.min(ms || 0, 5));
 
-  w.eval(pluginJs);
+  runPlugin(w, api, pluginJs);
 
   return { w, api, host, snacks, regs, calls, dom };
+}
+
+/**
+ * 按真实宿主的方式执行 plugin.js。
+ * 宿主是 new Function('plugin', 'PluginAPI', code)：API 是**函数参数**，
+ * 不是 window 上的属性。以前测试直接挂 window.PluginAPI，掩盖了
+ * 「只认 window → 入口/钩子全部注册不上」这个 bug，所以这里必须照抄宿主写法。
+ */
+function runPlugin(w, api, code) {
+  const fn = new w.Function('plugin', 'PluginAPI', code);
+  fn(api, api);
 }
 
 const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
@@ -137,41 +148,32 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
 (async function run() {
   console.log('[1] 入口注册');
   {
-    const { regs } = boot(data([]), { lang: 'zh' });
-    eq(regs.sidePanel, 1, '注册侧栏按钮');
-    eq(regs.menu, 1, '注册菜单项');
-    eq(regs.menuLabel, '里程碑', '入口名称取宿主语言（中文）');
+    const { regs, api } = boot(data([]), { lang: 'zh' });
+    eq(regs.menu, 1, '注册左侧导航菜单项');
+    eq(regs.menuLabel, 'Milestone', '入口名固定为 Milestone（不随语言变）');
+    // 顶栏那排（添加任务 / 开始专注 / 同步）不需要重复的插件按钮
+    eq(regs.sidePanel, 0, '不注册顶栏侧栏按钮');
+    // 钩子同样走 P()：API 拿不到时连钩子都挂不上，提醒功能会整条静默失效
+    ok(!!api.hooks.persistedDataChanged, '注册同步钩子');
+    ok(!!api.hooks.languageChange, '注册语言钩子');
   }
 
-  console.log('[1.1] 入口名称跟随软件语言');
+  console.log('[1.1] 切语言不影响入口');
   {
-    // 宿主语言来自 getCurrentLanguage()（19.x 的 cfg 里没有 lang），入口名称按它取词
+    // 入口名写死，宿主语言是中文还是英文都一样
     const en = boot(data([], { lang: 'auto' }), { lang: 'en' });
-    eq(en.regs.menuLabel, 'Milestones', '英文宿主注册英文入口名');
-    eq(en.regs.sideLabel, 'Milestones', '侧栏按钮同名');
+    eq(en.regs.menuLabel, 'Milestone', '英文宿主入口名同样是 Milestone');
 
-    // 插件里显式选了语言时，入口名按插件的选择走（而不是宿主语言）
-    const pinned = boot(data([], { lang: 'en' }), { lang: 'zh' });
-    await wait(80);
-    eq(pinned.regs.menuLabel, '里程碑', '入口名先按宿主语言占位（注册早于数据读取）');
-
-    // 运行时切语言：宿主没有改名接口 —— 不重复注册，改为提示重启
+    // 运行时切语言：宿主没有改名接口，也不该为改名再注册一次或弹提示
     const run = boot(data([], { lang: 'auto' }), { lang: 'zh' });
     await wait(60);
     eq(run.regs.menu, 1, '只注册过一次');
-    run.api.getCurrentLanguage = () => 'en';   // 真实宿主里这个值随语言设置实时变化
+    run.api.getCurrentLanguage = () => 'en';
     run.api.hooks.languageChange({ code: 'en', newLanguage: 'en' });
     await wait(60);
     eq(run.regs.menu, 1, '切语言不重复注册（否则导航会多一个入口）');
-    eq(run.regs.sidePanel, 1, '侧栏按钮也不重复注册');
-    ok(run.snacks.some((m) => m && m.indexOf('Milestones') !== -1),
-      '提示条说明重启后名称变成 Milestones：' + JSON.stringify(run.snacks));
-    // 切回原语言：名称本来就对，不该再弹
-    const before = run.snacks.length;
-    run.api.getCurrentLanguage = () => 'zh';
-    run.api.hooks.languageChange({ code: 'zh', newLanguage: 'zh' });
-    await wait(60);
-    eq(run.snacks.length, before, '切回原语言不再弹提示');
+    eq(run.regs.menuLabel, 'Milestone', '切语言后入口名照旧');
+    eq(run.snacks.length, 0, '不弹「重启改入口名」的提示条：' + JSON.stringify(run.snacks));
   }
 
   console.log('[2] 首次同步写入任务');
@@ -183,12 +185,16 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     const rows = taskList(host);
     eq(rows.length, 1, '生成 1 条任务');
     eq(rows[0].title, '🎂 妈妈生日（56岁）', '标题带图标与年龄');
-    ok(!!rows[0].projectId, '归入项目');
-    eq(Object.keys(host.projects).length, 1, '只建 1 个项目');
-    eq(Object.keys(host.projects).map((k) => host.projects[k].title)[0], '纪念日提醒', '项目名');
+    // 不再建项目：不给 projectId，宿主落收件箱
+    eq(rows[0].projectId, null, '任务落收件箱（没有 projectId）');
+    eq(rows[0].tagIds.length, 1, '带 1 个标签');
+    eq(Object.keys(host.tags).length, 1, '只建 1 个标签');
+    eq(host.tags[rows[0].tagIds[0]].title, 'milestone', '标签名 milestone');
+    eq(rows[0].tagIds[0], Object.keys(host.tags)[0], 'tagIds 指向新建的标签');
     const d = RT.desiredTask(Core.normalize({ events: [e] }).events[0], new Date());
     eq(rows[0].dueDay, d.dueDay, '到期日 = 该提醒你的那天');
-    ok(calls.some((c) => c.op === 'addProject'), '首次创建了项目');
+    ok(calls.some((c) => c.op === 'addTag'), '首次创建了标签');
+    ok(!calls.some((c) => c.op === 'add' && c.tagIds.length !== 1), '新任务一律带标签');
   }
 
   console.log('[3] 改名只更新不新增');
@@ -202,7 +208,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     const e2 = Object.assign({}, e1, { title: '小米生日（小朋友）' });
     const second = boot(data([e2]), {
       host: first.host,
-      reuse: { 'cd-task-map-v1': first.w.localStorage.getItem('cd-task-map-v1') || '{}' }
+      reuse: { 'ml-task-map-v1': first.w.localStorage.getItem('ml-task-map-v1') || '{}' }
     });
     await wait(150);
     eq(taskList(second.host).length, 1, '仍然只有 1 条，没有重复');
@@ -210,26 +216,53 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     ok(!second.calls.some((c) => c.op === 'add'), '没有新建');
   }
 
-  console.log('[3.1] 项目已存在时新任务仍归入该项目');
+  console.log('[3.1] 标签已存在时复用，不重复创建');
   {
-    // 首次运行建项目后，`findProject` 命中已有项目 —— 这里必须返回项目 id，
-    // 否则 projectId 传 undefined，任务会落到收件箱
+    // 标签已存在（首次运行之后都是如此）时必须命中已有标签 id，
+    // 否则每轮对账都会新建一个同名标签，标签列表里很快就堆满 milestone
     const e1 = ev({ id: 'p1', title: '小林生日', kind: 'birthday', date: '2020-03-03', repeat: true });
     const first = boot(data([e1]));
     await wait(150);
-    const projId = Object.keys(first.host.projects)[0];
-    ok(!!projId, '首次运行建了项目');
+    const tagId = Object.keys(first.host.tags)[0];
+    ok(!!tagId, '首次运行建了标签');
 
     const e2 = ev({ id: 'p2', title: '老张生日', kind: 'birthday', date: '2020-04-04', repeat: true });
     const second = boot(data([e1, e2]), {
       host: first.host,
-      reuse: { 'cd-task-map-v1': first.w.localStorage.getItem('cd-task-map-v1') || '{}' }
+      reuse: { 'ml-task-map-v1': first.w.localStorage.getItem('ml-task-map-v1') || '{}' }
     });
     await wait(200);
     const added = taskList(second.host).filter((t) => t.title.indexOf('老张') !== -1);
-    eq(added.length, 1, '项目已存在于宿主时新增 1 条任务');
-    eq(added[0] && added[0].projectId, projId, '新任务的 projectId 指向已有项目（不是收件箱）');
-    eq(Object.keys(second.host.projects).length, 1, '不会重复建项目');
+    eq(added.length, 1, '标签已存在时新增 1 条任务');
+    eq(added[0] && added[0].tagIds[0], tagId, '新任务指向已有标签');
+    eq(Object.keys(second.host.tags).length, 1, '不会重复建标签');
+    ok(!second.calls.some((c) => c.op === 'addTag'), '没有再调 addTag');
+  }
+
+  console.log('[3.2] 老任务（在旧项目里、没标签）只补标签，不搬项目');
+  {
+    // 早期版本把任务建在「里程碑提醒」项目里；宿主改 projectId 不会同步项目侧
+    // 的 taskIds，所以这里只补标签、projectId 原样保留
+    const e = ev({ id: 'p3', title: '老李生日', kind: 'birthday', date: '2020-05-05', repeat: true });
+    const norm = Core.normalize({ events: [e] }).events[0];
+    const d = RT.desiredTask(norm, new Date());
+    const { host, calls } = boot(data([e]), {
+      host: {
+        tasks: {
+          old_1: { id: 'old_1', title: d.title, notes: d.notes, dueDay: d.dueDay,
+            isDone: false, projectId: 'legacy_proj', tagIds: [], created: 1 }
+        },
+        tags: {},
+        seq: 5
+      }
+    });
+    await wait(150);
+    eq(taskList(host).length, 1, '老任务被认领，不重复创建');
+    const t = host.tasks.old_1;
+    eq(t.projectId, 'legacy_proj', 'projectId 不动，避免项目侧 taskIds 对不上');
+    eq(t.tagIds.length, 1, '补上 milestone 标签');
+    ok(calls.some((c) => c.op === 'update' && c.patch && c.patch.tagIds), '通过 updateTask 只写 tagIds');
+    ok(!calls.some((c) => c.op === 'update' && 'projectId' in (c.patch || {})), '补丁里没有 projectId');
   }
 
   console.log('[4] 删除事项 → 任务消失');
@@ -241,7 +274,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
 
     const second = boot(data([]), {
       host: first.host,
-      reuse: { 'cd-task-map-v1': first.w.localStorage.getItem('cd-task-map-v1') || '{}' }
+      reuse: { 'ml-task-map-v1': first.w.localStorage.getItem('ml-task-map-v1') || '{}' }
     });
     await wait(150);
     eq(taskList(second.host).length, 0, '删掉日子后任务被删除');
@@ -258,7 +291,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     const off = Object.assign({}, on, { remind: { task: false, snack: false, offsets: [3] } });
     const second = boot(data([off]), {
       host: first.host,
-      reuse: { 'cd-task-map-v1': first.w.localStorage.getItem('cd-task-map-v1') || '{}' }
+      reuse: { 'ml-task-map-v1': first.w.localStorage.getItem('ml-task-map-v1') || '{}' }
     });
     await wait(150);
     eq(taskList(second.host).length, 0, '关闭提醒后任务被删除');
@@ -271,18 +304,18 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     const first = boot(data([e]));
     await wait(150);
     eq(taskList(first.host).length, 1, '先有 1 条');
-    const map = first.w.localStorage.getItem('cd-task-map-v1') || '{}';
+    const map = first.w.localStorage.getItem('ml-task-map-v1') || '{}';
 
     // 把日子归档：任务应该被删除
     const second = boot(data([Object.assign({}, e, { archived: true })]), {
-      host: first.host, reuse: { 'cd-task-map-v1': map }
+      host: first.host, reuse: { 'ml-task-map-v1': map }
     });
     await wait(150);
     eq(taskList(second.host).length, 0, '归档后任务被删除');
 
     // 只留提示条渠道：同样不建任务
     const third = boot(data([Object.assign({}, e, { remind: { task: false, snack: true, offsets: [7] } })]), {
-      host: first.host, reuse: { 'cd-task-map-v1': map }
+      host: first.host, reuse: { 'ml-task-map-v1': map }
     });
     await wait(150);
     eq(taskList(third.host).length, 0, '关掉任务列表后任务被删除');
@@ -328,9 +361,9 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     const { host, calls } = boot(data([e]), {
       host: {
         tasks: {
-          remote_1: { id: 'remote_1', title: d.title, notes: d.notes, dueDay: d.dueDay, isDone: false, projectId: 'p', created: 1 }
+          remote_1: { id: 'remote_1', title: d.title, notes: d.notes, dueDay: d.dueDay, isDone: false, projectId: null, tagIds: [], created: 1 }
         },
-        projects: { p: { id: 'p', title: '纪念日提醒', taskIds: [], backlogTaskIds: [] } },
+        tags: {},
         seq: 5
       }
     });
@@ -373,7 +406,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     eq(taskList(arch.host).length, 0, '归档的日子不建任务');
   }
 
-  console.log('[11] 旧宿主没有任务 API 也不崩溃');
+  console.log('[11] 宿主未提供任务 API 也不崩溃');
   {
     const e = ev({ id: 'j1', title: '旧版本', date: inDays(0), remind: { task: true, snack: true, offsets: [0] } });
     const { snacks } = boot(data([e]), { noTaskApi: true });
@@ -402,9 +435,9 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
   {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only', url: 'https://localhost/' });
     const w = dom.window;
-    w.PluginAPI = {
+    const api = {
       Hooks: { PERSISTED_DATA_CHANGED: 'p', TASK_DELETE: 'd' },
-      onReady(fn) { fn(); }, registerHook() {}, registerSidePanelButton() {}, registerMenuEntry() {},
+      onReady(fn) { fn(); }, onUnload() {}, registerHook() {}, registerSidePanelButton() {}, registerMenuEntry() {},
       showIndexHtmlAsView() {}, showSnack() {},
       loadSyncedData() { return Promise.resolve('{broken json'); },
       log: { warn() {}, info() {}, err() {}, error() {}, log() {} }
@@ -412,7 +445,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     w.EventCore = Core;
     const st = w.setTimeout.bind(w);
     w.setTimeout = (fn, ms) => st(fn, Math.min(ms || 0, 5));
-    w.eval(pluginJs);
+    runPlugin(w, api, pluginJs);
     await wait(150);
     ok(true, '损坏数据静默跳过');
   }

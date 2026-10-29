@@ -279,12 +279,16 @@ const oldShape = Core.normalize({
 eq(oldShape.events[0].remind.task, true, '旧 on 被忽略，按缺省加入任务列表');
 eq(oldShape.events[0].remind.snack, false, '旧 on 不会打开提示条');
 eq(oldShape.events[0].remind.offsets.join(','), '0,3', '合法档位仍被保留');
-eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,taskProject', 'settings 只有语言、项目名与置顶开关');
+eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,taskTag', 'settings 只有语言、标签名与置顶开关');
+eq('taskProject' in oldShape.settings, false, '旧的项目名已迁出：任务改落收件箱 + 标签');
+eq(oldShape.settings.taskTag, 'milestone', '标签名默认 milestone');
+eq(Core.normalize({ settings: { taskTag: '  ' } }).settings.taskTag, 'milestone', '空白标签名回落到默认值');
+eq(Core.normalize({ settings: { taskTag: '生日提醒' } }).settings.taskTag, '生日提醒', '自定义标签名保留');
 eq(oldShape.settings.hero, true, '缺省开启置顶卡片');
 eq('strikeExpired' in Core.normalize({ settings: { strikeExpired: false } }).settings, false, '删除线开关已移除，旧字段不落库');
 eq(Core.normalize({ settings: { hero: false } }).settings.hero, false, '关闭置顶被保留');
 eq(Core.normalize({}).settings.hero, true, '没有 settings 时默认开启');
-eq(Core.emptyData().version, 6, '数据版本 6（不兼容旧版本）');
+eq(Core.emptyData().version, 1, '数据版本 1');
 
 // 旧字段不落库：pinned 已从数据模型移除
 eq('pinned' in Core.normalize({ events: [{ title: 'p', date: '2026-01-01', pinned: true }] }).events[0], false, 'pinned 字段已移除');

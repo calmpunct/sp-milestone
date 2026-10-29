@@ -90,7 +90,7 @@ const dom = new JSDOM(html, {
 const { window } = dom;
 const document = window.document;
 const $ = (s) => document.querySelector(s);
-const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
+const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
 
 (async function run() {
   await new Promise((r) => {
@@ -100,16 +100,16 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   await wait(200);
 
   console.log('[1] 初始渲染');
-  eq(document.querySelectorAll('.cd-item').length, 6, '渲染 6 条记录');
-  ok($('.cd-hero'), '主视觉卡片存在');
-  eq($('.cd-sub').textContent,
+  eq(document.querySelectorAll('.ml-item').length, 6, '渲染 6 条记录');
+  ok($('.ml-hero'), '主视觉卡片存在');
+  eq($('.ml-sub').textContent,
     '6 个事项 · ' + (todayCount ? '今天 ' + todayCount + ' 个' : '最近 ' + nearest.r.days + ' 天'),
     '副标题统计');
-  ok($('.cd-hero-label').textContent.includes(nearest.e.title), '最近的事项在卡片上');
-  eq(document.querySelectorAll('.cd-item.is-today').length, todayCount, '今天条目高亮数量');
+  ok($('.ml-hero-label').textContent.includes(nearest.e.title), '最近的事项在卡片上');
+  eq(document.querySelectorAll('.ml-item.is-today').length, todayCount, '今天条目高亮数量');
 
-  const subs = Array.from(document.querySelectorAll('.cd-item-sub')).map((n) => n.textContent);
-  const titles = Array.from(document.querySelectorAll('.cd-item-title em')).map((n) => n.textContent);
+  const subs = Array.from(document.querySelectorAll('.ml-item-sub')).map((n) => n.textContent);
+  const titles = Array.from(document.querySelectorAll('.ml-item-title em')).map((n) => n.textContent);
   ok(subs.some((t) => t.includes('农历四月十八')), '农历条目显示农历日期');
   ok(titles.some((t) => /（\d+岁）$/.test(t)), '生日名称带年龄（如「小米生日（7岁）」）');
   ok(!subs.some((t) => t.includes('岁')), '年龄不再重复出现在副标题');
@@ -117,8 +117,8 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
 
   // 周年按「今天已满整年」算：2018-06-16 到今天比「下次发生日的年份差」少一年
   const annSub = (id) => {
-    const el = Array.from(document.querySelectorAll('.cd-item')).find((n) => n.dataset.id === id);
-    return el ? el.querySelector('.cd-item-sub').textContent : '';
+    const el = Array.from(document.querySelectorAll('.ml-item')).find((n) => n.dataset.id === id);
+    return el ? el.querySelector('.ml-item-sub').textContent : '';
   };
   const now = new Date();
   let markYear = now.getFullYear();
@@ -136,11 +136,11 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     ok(!annSub('b3').includes(' 天'), '正好是周年当天时不显示零头');
   }
   ok(!annSub('b5').includes('周年') && !annSub('b5').includes(' 天'), '不满一周年只显示天数');
-  eq(document.querySelectorAll('.cd-bell').length, 6, '开启提醒的条目显示铃铛');
+  eq(document.querySelectorAll('.ml-bell').length, 6, '开启提醒的条目显示铃铛');
 
   console.log('[1.1] 时间语义与排序');
-  const nums = Array.from(document.querySelectorAll('.cd-item')).map((el) => {
-    const box = el.querySelector('.cd-item-num');
+  const nums = Array.from(document.querySelectorAll('.ml-item')).map((el) => {
+    const box = el.querySelector('.ml-item-num');
     const bEl = box.querySelector('b');
     const iEl = box.querySelector('i');
     // 三天内不再显示数字，而是「今天 / 明天 / 后天」
@@ -173,25 +173,25 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   eq(nums.find((n) => n.id === 'b2').unit, '', '文字状态不再挂「剩余天数」单位');
 
   console.log('[2] XSS 防护');
-  ok(!document.querySelector('.cd-item img'), '注入的 img 未被解析执行');
-  ok(document.querySelector('.cd-list').textContent.includes('<img src=x'), '恶意标题作为纯文本渲染');
+  ok(!document.querySelector('.ml-item img'), '注入的 img 未被解析执行');
+  ok(document.querySelector('.ml-list').textContent.includes('<img src=x'), '恶意标题作为纯文本渲染');
 
   console.log('[3] 筛选切换');
-  const chips = document.querySelectorAll('.cd-chip');
+  const chips = document.querySelectorAll('.ml-chip');
   chips[1].click();
   await wait(40);
-  eq(document.querySelectorAll('.cd-item').length, 2, '生日筛选 2 条');
+  eq(document.querySelectorAll('.ml-item').length, 2, '生日筛选 2 条');
   eq(chips[1].getAttribute('aria-pressed'), 'true', '筛选按钮激活');
   chips[0].click();
   await wait(40);
-  eq(document.querySelectorAll('.cd-item').length, 6, '回到全部');
+  eq(document.querySelectorAll('.ml-item').length, 6, '回到全部');
 
   console.log('[4] 打开农历条目');
   byId('b1').click();
   await wait(150);
-  eq($('#cdLayer').hidden, false, '弹层打开');
+  eq($('#mlLayer').hidden, false, '弹层打开');
   eq($('#fTitle').value, '妈妈生日', '标题已填充');
-  eq($('#cdDelete').hidden, false, '编辑态显示删除');
+  eq($('#mlDelete').hidden, false, '编辑态显示删除');
   eq(document.querySelectorAll('#fKind button[aria-pressed="true"]')[0].dataset.v, 'birthday', '类型回填');
   eq(document.querySelectorAll('#fCalendar button[aria-pressed="true"]')[0].dataset.v, 'lunar', '历法回填');
 
@@ -223,12 +223,12 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
 
   console.log('[7] 保存修改');
   $('#fTitle').value = '妈妈生日（改正）';
-  document.querySelectorAll('#fColors .cd-color')[3].click();
+  document.querySelectorAll('#fColors .ml-color')[3].click();
   const before = window.__SAVES__.length;
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
   eq(window.__SAVES__.length, before + 1, '触发一次同步写入');
-  eq(document.querySelectorAll('.cd-item').length, 6, '条目数不变');
+  eq(document.querySelectorAll('.ml-item').length, 6, '条目数不变');
   const saved = JSON.parse(window.__STORE__);
   const mom = saved.events.filter((e) => e.id === 'b1')[0];
   eq(mom.title, '妈妈生日（改正）', '标题已写入');
@@ -266,7 +266,7 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   document.querySelector('#fOffsets button[data-d="7"]').click();
   await wait(40);
   eq(document.querySelector('#fOffsets button[data-d="7"]').getAttribute('aria-pressed'), 'true', '提前 7 天已选中');
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
 
   const withRemind = JSON.parse(window.__STORE__).events.filter((e) => e.id === 'b4')[0];
@@ -274,34 +274,55 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   eq(withRemind.remind.snack, true, '提示条开启已写入');
   eq(withRemind.remind.offsets.join(','), '7', '提醒天数已写入');
   eq(withRemind.archived, false, '未归档已写入');
-  eq(document.querySelectorAll('.cd-bell').length, 6, '还有一个渠道开着 → 铃铛仍在');
+  eq(document.querySelectorAll('.ml-bell').length, 6, '还有一个渠道开着 → 铃铛仍在');
 
   console.log('[9] 新增记录');
-  $('#cdAdd').click();
+  $('#mlAdd').click();
   await wait(150);
-  eq($('#cdLayer').hidden, false, '新增弹层打开');
+  eq($('#mlLayer').hidden, false, '新增弹层打开');
   eq($('#fTitle').value, '', '新表单标题为空');
-  eq($('#cdDelete').hidden, true, '新建态隐藏删除');
-  $('#cdSave').click();
+  eq($('#mlDelete').hidden, true, '新建态隐藏删除');
+  // 名称必填：空名称不落库，给出红框 + 说明
+  $('#mlSave').click();
   await wait(450);
-  eq(document.querySelectorAll('.cd-item').length, 7, '新增成功');
+  eq(document.querySelectorAll('.ml-item').length, 6, '空名称不保存');
+  eq($('#mlLayer').hidden, false, '弹层仍然开着，不丢用户已填的内容');
+  eq($('#fTitleErr').hidden, false, '给出「请填写名称」提示');
+  eq($('#fTitle').getAttribute('aria-invalid'), 'true', '输入框标记为无效');
+  eq($('#fTitleErr').textContent, '请填写名称', '提示文案');
+
+  // 只填空格也不算填
+  $('#fTitle').value = '   ';
+  $('#mlSave').click();
+  await wait(200);
+  eq(document.querySelectorAll('.ml-item').length, 6, '全是空格同样不保存');
+
+  // 填了名称才保存；名称按纯文本存储（不被当成标签解析）
+  const xssTitle = '<img src=x onerror=alert(1)>恶意';
+  $('#fTitle').value = xssTitle;
+  $('#fTitle').dispatchEvent(new window.Event('input'));
+  eq($('#fTitleErr').hidden, true, '一输入就撤掉提示');
+  eq($('#fTitle').getAttribute('aria-invalid'), null, '输入后恢复常态');
+  $('#mlSave').click();
+  await wait(450);
+  eq(document.querySelectorAll('.ml-item').length, 7, '新增成功');
   const saved2 = JSON.parse(window.__STORE__);
-  eq(saved2.events[saved2.events.length - 1].title, '生日', '空标题回落为类型名');
+  eq(saved2.events[saved2.events.length - 1].title, xssTitle, '名称按纯文本保存');
 
   console.log('[10] 删除（用户取消）');
   byId('b4').click();
   await wait(150);
-  $('#cdDelete').click();
+  $('#mlDelete').click();
   await wait(300);
-  eq(document.querySelectorAll('.cd-item').length, 7, '取消后不删除');
+  eq(document.querySelectorAll('.ml-item').length, 7, '取消后不删除');
 
   console.log('[11] 删除（用户确认）');
   window.__answer = '删除';
   byId('b4').click();
   await wait(150);
-  $('#cdDelete').click();
+  $('#mlDelete').click();
   await wait(400);
-  eq(document.querySelectorAll('.cd-item').length, 6, '确认后删除成功');
+  eq(document.querySelectorAll('.ml-item').length, 6, '确认后删除成功');
 
   console.log('[12] 远程同步');
   const remote = JSON.parse(JSON.stringify(JSON.parse(window.__STORE__)));
@@ -311,60 +332,60 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   ok(typeof window.__hooks.persistedDataChanged === 'function', '已注册同步钩子');
   window.__hooks.persistedDataChanged();
   await wait(350);
-  ok($('.cd-list').textContent.includes('远程新增'), '远程数据已合并到界面');
+  ok($('.ml-list').textContent.includes('远程新增'), '远程数据已合并到界面');
 
   console.log('[13] 分类内新建默认类型');
   const kindOf = () => document.querySelector('#fKind button[aria-pressed="true"]').dataset.v;
 
   // 在「纪念日」分类点添加，类型默认就是纪念日
-  document.querySelector('.cd-chip[data-f="anniversary"]').click();
+  document.querySelector('.ml-chip[data-f="anniversary"]').click();
   await wait(60);
-  $('#cdAdd').click();
+  $('#mlAdd').click();
   await wait(150);
   eq(kindOf(), 'anniversary', '纪念日分类下新建默认选中纪念日');
-  eq($('#cdSheetTitle').textContent, '新建纪念日', '标题显示新建纪念日');
+  eq($('#mlSheetTitle').textContent, '新建纪念日', '标题显示新建纪念日');
 
   // 仍可手动改成别的类型，标题跟着变
   document.querySelector('#fKind button[data-v="countdown"]').click();
   await wait(60);
   eq(kindOf(), 'countdown', '可手动切换为倒数日');
-  eq($('#cdSheetTitle').textContent, '新建倒数日', '标题跟随切换');
+  eq($('#mlSheetTitle').textContent, '新建倒数日', '标题跟随切换');
   document.querySelector('#fKind button[data-v="anniversary"]').click();
   await wait(60);
 
   // 保存后落到当前分类，且名称按纯文本存储
   $('#fTitle').value = '相识纪念日';
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
   const created = JSON.parse(window.__STORE__).events.filter((e) => e.title === '相识纪念日')[0];
   ok(!!created, '已保存');
   eq(created.kind, 'anniversary', '保存类型为纪念日');
   eq(created.title, '相识纪念日', '名称不含年龄等展示信息');
-  ok($('.cd-list').textContent.includes('相识纪念日'), '新条目出现在当前分类列表');
+  ok($('.ml-list').textContent.includes('相识纪念日'), '新条目出现在当前分类列表');
 
   // 回到「全部」，新建默认仍是生日
-  document.querySelector('.cd-chip[data-f="all"]').click();
+  document.querySelector('.ml-chip[data-f="all"]').click();
   await wait(60);
-  $('#cdAdd').click();
+  $('#mlAdd').click();
   await wait(150);
   eq(kindOf(), 'birthday', '全部视图下新建默认生日');
-  eq($('#cdSheetTitle').textContent, '新建生日', '标题显示新建生日');
+  eq($('#mlSheetTitle').textContent, '新建生日', '标题显示新建生日');
 
   // 名称里手输年龄会被清掉，避免渲染时叠加
   $('#fTitle').value = '测试生日（30岁）';
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
   const cleaned = JSON.parse(window.__STORE__).events.filter((e) => /测试生日/.test(e.title))[0];
   eq(cleaned.title, '测试生日', '输入的年龄后缀不写入名称');
-  ok($('.cd-list').textContent.includes('测试生日（'), '列表仍显示年龄');
+  ok($('.ml-list').textContent.includes('测试生日（'), '列表仍显示年龄');
 
   console.log('[14] 归档');
-  ok(!!$('#cdSettings'), '顶栏有设置入口');
-  eq(!!$('#cdArchive'), false, '归档不再占用顶栏按钮');
-  document.querySelector('.cd-chip[data-f="all"]').click();
+  ok(!!$('#mlSettings'), '顶栏有设置入口');
+  eq(!!$('#mlArchive'), false, '归档不再占用顶栏按钮');
+  document.querySelector('.ml-chip[data-f="all"]').click();
   await wait(60);
-  const total = document.querySelectorAll('.cd-item').length;
-  eq(document.querySelector('.cd-chip[data-f="archive"]').textContent, '归档', '没有归档项时胶囊只显示「归档」');
+  const total = document.querySelectorAll('.ml-item').length;
+  eq(document.querySelector('.ml-chip[data-f="archive"]').textContent, '归档', '没有归档项时胶囊只显示「归档」');
 
   // 归档「结婚纪念日」
   byId('b3').click();
@@ -373,28 +394,28 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   $('#fArchived').click();
   await wait(60);
   ok($('#fRemindHint').textContent.includes('已归档'), '归档时说明变为不再提醒');
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
 
-  eq(document.querySelectorAll('.cd-item').length, total - 1, '归档后不在「全部」里显示');
+  eq(document.querySelectorAll('.ml-item').length, total - 1, '归档后不在「全部」里显示');
   ok(!byId('b3'), '归档的条目移出当前列表');
-  eq(document.querySelector('.cd-chip[data-f="archive"]').textContent, '归档 1', '筛选条显示归档数量');
+  eq(document.querySelector('.ml-chip[data-f="archive"]').textContent, '归档 1', '筛选条显示归档数量');
 
   // 通过筛选胶囊进入归档视图
-  document.querySelector('.cd-chip[data-f="archive"]').click();
+  document.querySelector('.ml-chip[data-f="archive"]').click();
   await wait(60);
-  eq(document.querySelector('.cd-chip[data-f="archive"]').getAttribute('aria-pressed'), 'true', '归档胶囊进入按下态');
-  eq(document.querySelectorAll('.cd-item').length, 1, '归档视图只有归档的事项');
+  eq(document.querySelector('.ml-chip[data-f="archive"]').getAttribute('aria-pressed'), 'true', '归档胶囊进入按下态');
+  eq(document.querySelectorAll('.ml-item').length, 1, '归档视图只有归档的事项');
   ok(byId('b3'), '归档的事项在归档视图里');
-  ok($('.cd-sub').textContent.includes('已归档'), '副标题说明已归档');
-  ok($('#cdHero').innerHTML.includes('cd-hero--empty'), '归档视图用占位卡，不置顶任何事项');
-  ok(document.querySelector('.cd-list').textContent.includes('已归档 · 纪念日'), '条目带已归档标签');
+  ok($('.ml-sub').textContent.includes('已归档'), '副标题说明已归档');
+  ok($('#mlHero').innerHTML.includes('ml-hero--empty'), '归档视图用占位卡，不置顶任何事项');
+  ok(document.querySelector('.ml-list').textContent.includes('已归档 · 纪念日'), '条目带已归档标签');
 
   // 归档视图里新建：默认就是归档状态
-  $('#cdAdd').click();
+  $('#mlAdd').click();
   await wait(150);
   eq($('#fArchived').checked, true, '归档视图里新建默认归档');
-  $('#cdCancel').click();
+  $('#mlCancel').click();
   await wait(380);
 
   // 取消归档 → 回到「全部」
@@ -402,77 +423,77 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   await wait(150);
   $('#fArchived').click();
   await wait(40);
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
-  eq(document.querySelector('.cd-chip[data-f="archive"]').textContent, '归档', '没有归档项后计数消失');
-  eq(document.querySelectorAll('.cd-item').length, 0, '取消归档后归档视图为空');
-  document.querySelector('.cd-chip[data-f="all"]').click();
+  eq(document.querySelector('.ml-chip[data-f="archive"]').textContent, '归档', '没有归档项后计数消失');
+  eq(document.querySelectorAll('.ml-item').length, 0, '取消归档后归档视图为空');
+  document.querySelector('.ml-chip[data-f="all"]').click();
   await wait(60);
-  eq(document.querySelectorAll('.cd-item').length, total, '回到全部，条目恢复');
+  eq(document.querySelectorAll('.ml-item').length, total, '回到全部，条目恢复');
 
   console.log('[15] 设置与置顶卡片');
-  document.querySelector('.cd-chip[data-f="all"]').click();
+  document.querySelector('.ml-chip[data-f="all"]').click();
   await wait(60);
-  $('#cdSettings').click();
+  $('#mlSettings').click();
   await wait(150);
-  eq($('#cdSetLayer').hidden, false, '设置面板打开');
+  eq($('#mlSetLayer').hidden, false, '设置面板打开');
   eq($('#sHero').checked, true, '默认开启置顶卡片');
   ok($('#sAbout').textContent.includes('里程碑'), '关于信息显示插件名');
   ok(/v\d+\.\d+\.\d+/.test($('#sAbout').textContent), '关于信息显示版本号');
 
   // 作者与反馈地址（设置 > 关于）
-  const aboutBox = document.querySelector('.cd-about');
+  const aboutBox = document.querySelector('.ml-about');
   ok(!!aboutBox, '关于是一张三行的信息卡');
   ok(aboutBox.textContent.includes('calmpunct'), '关于里显示插件作者');
   eq(aboutBox.querySelector('[data-i18n="about.author"]').textContent, '作者', '作者标签跟着语言走');
   eq(aboutBox.querySelector('[data-i18n="about.feedback"]').textContent, '反馈', '反馈标签跟着语言走');
-  const fbLink = aboutBox.querySelector('a.cd-about-link');
+  const fbLink = aboutBox.querySelector('a.ml-about-link');
   eq(!!fbLink, true, '反馈地址是可点链接');
   eq(fbLink.getAttribute('href'), 'https://github.com/calmpunct/sp-milestone/issues', '反馈地址指向仓库 issues');
   eq(fbLink.getAttribute('target'), '_blank', '反馈链接在新窗口打开');
   ok(/noopener/.test(fbLink.getAttribute('rel') || ''), '反馈链接断开 opener');
-  $('#cdSetClose').click();
+  $('#mlSetClose').click();
   await wait(420);
-  eq($('#cdSetLayer').hidden, true, '设置面板关闭');
+  eq($('#mlSetLayer').hidden, true, '设置面板关闭');
 
   // 置顶卡片跟随当前分区，而不是固定取「全部」的第一条
-  ok(!!$('.cd-hero'), '全部视图有置顶卡片');
-  const heroId = () => { const h = document.querySelector('.cd-hero'); return h ? h.dataset.id : null; };
-  const firstId = () => { const it = document.querySelector('.cd-item'); return it ? it.dataset.id : null; };
+  ok(!!$('.ml-hero'), '全部视图有置顶卡片');
+  const heroId = () => { const h = document.querySelector('.ml-hero'); return h ? h.dataset.id : null; };
+  const firstId = () => { const it = document.querySelector('.ml-item'); return it ? it.dataset.id : null; };
   eq(heroId(), firstId(), '全部视图：置顶 = 全部的第一条');
 
-  document.querySelector('.cd-chip[data-f="anniversary"]').click();
+  document.querySelector('.ml-chip[data-f="anniversary"]').click();
   await wait(60);
-  ok($('.cd-hero-label').textContent.includes('已经走过'), '纪念日分区：置顶是已过语义');
+  ok($('.ml-hero-label').textContent.includes('已经走过'), '纪念日分区：置顶是已过语义');
   eq(heroId(), firstId(), '纪念日分区：置顶 = 该分区第一条');
 
-  document.querySelector('.cd-chip[data-f="birthday"]').click();
+  document.querySelector('.ml-chip[data-f="birthday"]').click();
   await wait(60);
   // 剩余 0/1/2 天时标签是「…就在 / …就是」，所以判「不是已过语义」而不是死抠「还有」
-  ok(!!$('.cd-hero-num--remain'), '生日分区：置顶是剩余语义');
-  ok(!$('.cd-hero-label').textContent.includes('已经走过'), '生日分区：置顶不按已过语义');
+  ok(!!$('.ml-hero-num--remain'), '生日分区：置顶是剩余语义');
+  ok(!$('.ml-hero-label').textContent.includes('已经走过'), '生日分区：置顶不按已过语义');
   eq(heroId(), firstId(), '生日分区：置顶 = 该分区第一条');
 
   // 关掉开关：卡片消失、列表贴顶，设置写入同步数据
-  $('#cdSettings').click();
+  $('#mlSettings').click();
   await wait(150);
   $('#sHero').click();
   await wait(400);
-  eq($('#cdHero').innerHTML, '', '关掉后不渲染置顶卡片');
+  eq($('#mlHero').innerHTML, '', '关掉后不渲染置顶卡片');
   eq(JSON.parse(window.__STORE__).settings.hero, false, '开关写入同步数据');
 
   $('#sHero').click();
   await wait(400);
-  ok(!!$('.cd-hero'), '重新打开后卡片回来');
+  ok(!!$('.ml-hero'), '重新打开后卡片回来');
   eq(JSON.parse(window.__STORE__).settings.hero, true, '开关值可恢复');
-  $('#cdSetClose').click();
+  $('#mlSetClose').click();
   await wait(420);
 
   console.log('[16] 空分区占位');
   {
     const seed = {
-      version: 4,
-      settings: { lang: 'zh', taskProject: '里程碑提醒', hero: true },
+      version: 1,
+      settings: { lang: 'zh', taskTag: 'milestone', hero: true },
       events: [{ id: 'x1', title: '甲生日', kind: 'birthday', calendar: 'solar', date: '2000-01-01',
         repeat: true, color: '#f59f00', note: '' }]
     };
@@ -495,37 +516,37 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     });
     const d2 = dom2.window.document;
     await new Promise((r) => setTimeout(r, 300));
-    d2.querySelector('.cd-chip[data-f="anniversary"]').click();
+    d2.querySelector('.ml-chip[data-f="anniversary"]').click();
     await new Promise((r) => setTimeout(r, 120));
-    ok(!!d2.querySelector('.cd-hero--empty'), '空分区仍然渲染等高占位卡');
-    ok(d2.querySelector('.cd-hero-label').textContent.includes('纪念日'), '占位卡标明当前分区');
-    eq(d2.querySelector('.cd-hero-num').textContent.trim(), '—', '占位卡不显示天数');
-    ok(d2.querySelector('.cd-hero-meta').textContent.includes('还没有记录'), '占位卡给出提示');
-    eq(d2.querySelectorAll('.cd-item').length, 0, '空分区没有条目');
-    ok(d2.querySelector('.cd-sub').textContent.includes('这个分类还没有记录'), '副标题说明分类为空');
-    ok(d2.querySelector('.cd-list').textContent.includes('添加一个纪念日'), '空态按钮按纪念日新建');
+    ok(!!d2.querySelector('.ml-hero--empty'), '空分区仍然渲染等高占位卡');
+    ok(d2.querySelector('.ml-hero-label').textContent.includes('纪念日'), '占位卡标明当前分区');
+    eq(d2.querySelector('.ml-hero-num').textContent.trim(), '—', '占位卡不显示天数');
+    ok(d2.querySelector('.ml-hero-meta').textContent.includes('还没有记录'), '占位卡给出提示');
+    eq(d2.querySelectorAll('.ml-item').length, 0, '空分区没有条目');
+    ok(d2.querySelector('.ml-sub').textContent.includes('这个分类还没有记录'), '副标题说明分类为空');
+    ok(d2.querySelector('.ml-list').textContent.includes('添加一个纪念日'), '空态按钮按纪念日新建');
     dom2.window.close();
   }
 
   console.log('[17] 节日类型：预设与自定义');
-  document.querySelector('.cd-chip[data-f="all"]').click();
+  document.querySelector('.ml-chip[data-f="all"]').click();
   await wait(60);
-  const beforeFest = document.querySelectorAll('.cd-item').length;
+  const beforeFest = document.querySelectorAll('.ml-item').length;
 
-  $('#cdAdd').click();
+  $('#mlAdd').click();
   await wait(150);
   document.querySelector('#fKind button[data-v="festival"]').click();
   await wait(60);
-  eq($('#cdSheetTitle').textContent, '新建节日', '标题切到新建节日');
+  eq($('#mlSheetTitle').textContent, '新建节日', '标题切到新建节日');
   eq($('#fPresetWrap').hidden, false, '节日类型显示预设列表');
   eq($('#fArchiveWrap').hidden, true, '节日不显示归档开关（节日每年都会再来）');
   eq($('#fRepeatWrap').hidden, true, '节日不显示「每年重复」开关（强制每年）');
-  eq(document.querySelectorAll('#fPresets .cd-preset').length, Core.FESTIVALS.length + 1, '预设按钮 = 全部预设 + 自定义');
-  eq(document.querySelector('#fPresets .cd-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'false', '初始未选中任何预设');
-  eq(document.querySelector('#fPresets .cd-preset[data-k=""]').getAttribute('aria-pressed'), 'true', '未选预设时「自定义」为按下态');
+  eq(document.querySelectorAll('#fPresets .ml-preset').length, Core.FESTIVALS.length + 1, '预设按钮 = 全部预设 + 自定义');
+  eq(document.querySelector('#fPresets .ml-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'false', '初始未选中任何预设');
+  eq(document.querySelector('#fPresets .ml-preset[data-k=""]').getAttribute('aria-pressed'), 'true', '未选预设时「自定义」为按下态');
 
   // 选中秋：名称、历法、日期、颜色一次填好
-  document.querySelector('#fPresets .cd-preset[data-k="zhongqiu"]').click();
+  document.querySelector('#fPresets .ml-preset[data-k="zhongqiu"]').click();
   await wait(80);
   eq($('#fTitle').value, '中秋节', '名称自动填入');
   eq(document.querySelector('#fKind button[aria-pressed="true"]').dataset.v, 'festival', '类型仍是节日');
@@ -534,7 +555,7 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   eq($('#fLD').value, '15', '农历十五');
   eq($('#fDate').value, Core.festivalFields('zhongqiu', new Date()).date, '公历日期按下一次出现算出');
   ok($('#fPresetHint').textContent.includes('农历'), '提示说明按农历计算');
-  eq(document.querySelector('#fPresets .cd-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'true', '中秋预设高亮');
+  eq(document.querySelector('#fPresets .ml-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'true', '中秋预设高亮');
   // 预设已经把日期算好：历法与日期控件收起，避免重复输入
   eq($('#fCalendarWrap').hidden, true, '选中预设时隐藏历法');
   eq($('#fSolarWrap').hidden, true, '选中预设时隐藏公历日期');
@@ -548,11 +569,11 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   document.querySelector('#fKind button[data-v="festival"]').click();
   await wait(60);
   eq($('#fPresetWrap').hidden, false, '切回节日恢复预设');
-  eq(document.querySelector('#fPresets .cd-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'true', '切回后仍记住中秋');
+  eq(document.querySelector('#fPresets .ml-preset[data-k="zhongqiu"]').getAttribute('aria-pressed'), 'true', '切回后仍记住中秋');
 
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
-  eq(document.querySelectorAll('.cd-item').length, beforeFest + 1, '节日已添加');
+  eq(document.querySelectorAll('.ml-item').length, beforeFest + 1, '节日已添加');
   const festSaved = JSON.parse(window.__STORE__).events.filter((e) => e.title === '中秋节')[0];
   ok(!!festSaved, '节日已写入数据');
   eq(festSaved.kind, 'festival', '类型为节日');
@@ -563,71 +584,71 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   ok(/^\d{4}-\d{2}-\d{2}$/.test(festSaved.date), '公历日期已同步算出');
 
   // 节日筛选 + 展示语义
-  document.querySelector('.cd-chip[data-f="festival"]').click();
+  document.querySelector('.ml-chip[data-f="festival"]').click();
   await wait(60);
-  eq(document.querySelectorAll('.cd-item').length, 1, '节日筛选只有 1 条');
-  ok($('.cd-list').textContent.includes('中秋节'), '节日在列表中');
-  eq(document.querySelector('.cd-item .cd-tag').textContent, '节日', '条目标签显示节日');
-  ok($('.cd-hero-label').textContent.includes('还有'), '节日按剩余天数倒数');
-  eq(document.querySelector('.cd-item-num i').textContent === '剩余天数' ||
-    document.querySelector('.cd-item-num i').textContent === '就是今天', true, '单位是剩余天数');
-  ok($('.cd-sub').textContent.includes('节日'), '副标题按「节日」计数');
+  eq(document.querySelectorAll('.ml-item').length, 1, '节日筛选只有 1 条');
+  ok($('.ml-list').textContent.includes('中秋节'), '节日在列表中');
+  eq(document.querySelector('.ml-item .ml-tag').textContent, '节日', '条目标签显示节日');
+  ok($('.ml-hero-label').textContent.includes('还有'), '节日按剩余天数倒数');
+  eq(document.querySelector('.ml-item-num i').textContent === '剩余天数' ||
+    document.querySelector('.ml-item-num i').textContent === '就是今天', true, '单位是剩余天数');
+  ok($('.ml-sub').textContent.includes('节日'), '副标题按「节日」计数');
 
   // 自定义节日
-  $('#cdAdd').click();
+  $('#mlAdd').click();
   await wait(150);
   eq(document.querySelector('#fKind button[aria-pressed="true"]').dataset.v, 'festival', '节日分区下新建默认节日');
-  eq(document.querySelector('#fPresets .cd-preset[data-k=""]').getAttribute('aria-pressed'), 'true', '新记录默认是自定义');
+  eq(document.querySelector('#fPresets .ml-preset[data-k=""]').getAttribute('aria-pressed'), 'true', '新记录默认是自定义');
   eq($('#fCalendarWrap').hidden, false, '自定义时显示历法');
   eq($('#fSolarWrap').hidden, false, '自定义时显示日期');
   $('#fTitle').value = '公司年会';
   $('#fDate').value = '2027-01-20';
   $('#fDate').dispatchEvent(new window.Event('change'));
   await wait(40);
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
   const customFest = JSON.parse(window.__STORE__).events.filter((e) => e.title === '公司年会')[0];
   ok(!!customFest, '自定义节日已保存');
   eq(customFest.kind, 'festival', '自定义节日类型');
   eq(customFest.preset, null, '自定义节日没有预设标识');
   eq(customFest.date, '2027-01-20', '自定义日期保留');
-  eq(document.querySelectorAll('.cd-item').length, 2, '节日分区两条');
-  document.querySelector('.cd-chip[data-f="all"]').click();
+  eq(document.querySelectorAll('.ml-item').length, 2, '节日分区两条');
+  document.querySelector('.ml-chip[data-f="all"]').click();
   await wait(60);
 
   console.log('[18] 预设节日批量添加（多选）');
-  const beforeBatch = document.querySelectorAll('.cd-item').length;
-  $('#cdAdd').click();
+  const beforeBatch = document.querySelectorAll('.ml-item').length;
+  $('#mlAdd').click();
   await wait(150);
   document.querySelector('#fKind button[data-v="festival"]').click();
   await wait(60);
 
   // 一次勾三个
-  document.querySelector('#fPresets .cd-preset[data-k="chunjie"]').click();
+  document.querySelector('#fPresets .ml-preset[data-k="chunjie"]').click();
   await wait(60);
-  document.querySelector('#fPresets .cd-preset[data-k="yuanxiao"]').click();
+  document.querySelector('#fPresets .ml-preset[data-k="yuanxiao"]').click();
   await wait(60);
-  document.querySelector('#fPresets .cd-preset[data-k="qingming"]').click();
+  document.querySelector('#fPresets .ml-preset[data-k="qingming"]').click();
   await wait(60);
-  eq(document.querySelectorAll('#fPresets .cd-preset[aria-pressed="true"]').length, 3, '三个预设同时选中');
-  eq(document.querySelector('#fPresets .cd-preset[data-k=""]').getAttribute('aria-pressed'), 'false', '多选时「自定义」不再是按下态');
-  eq($('#cdSave').textContent, '添加 3 个', '保存按钮显示数量');
+  eq(document.querySelectorAll('#fPresets .ml-preset[aria-pressed="true"]').length, 3, '三个预设同时选中');
+  eq(document.querySelector('#fPresets .ml-preset[data-k=""]').getAttribute('aria-pressed'), 'false', '多选时「自定义」不再是按下态');
+  eq($('#mlSave').textContent, '添加 3 个', '保存按钮显示数量');
   eq($('#fTitleWrap').hidden, true, '多选时隐藏名称（每个节日用自己的名字）');
   eq($('#fColorWrap').hidden, true, '多选时隐藏颜色（各用预设配色）');
   eq($('#fCalendarWrap').hidden, true, '多选时隐藏历法');
   ok($('#fPresetHint').textContent.includes('春节') && $('#fPresetHint').textContent.includes('3 个'), '提示列出已选节日');
 
   // 再点一次取消选中
-  document.querySelector('#fPresets .cd-preset[data-k="yuanxiao"]').click();
+  document.querySelector('#fPresets .ml-preset[data-k="yuanxiao"]').click();
   await wait(60);
-  eq($('#cdSave').textContent, '添加 2 个', '取消一个后数量跟着变');
-  document.querySelector('#fPresets .cd-preset[data-k="yuanxiao"]').click();
+  eq($('#mlSave').textContent, '添加 2 个', '取消一个后数量跟着变');
+  document.querySelector('#fPresets .ml-preset[data-k="yuanxiao"]').click();
   await wait(60);
-  eq($('#cdSave').textContent, '添加 3 个', '重新选中恢复');
+  eq($('#mlSave').textContent, '添加 3 个', '重新选中恢复');
 
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(500);
-  eq(document.querySelectorAll('.cd-item').length, beforeBatch + 3, '一次加入 3 个节日');
+  eq(document.querySelectorAll('.ml-item').length, beforeBatch + 3, '一次加入 3 个节日');
 
   const batch = JSON.parse(window.__STORE__).events.filter((e) => e.title === '春节' || e.title === '元宵节' || e.title === '清明');
   eq(batch.length, 3, '三个节日都已写入');
@@ -644,10 +665,78 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   const qmSaved = batch.filter((e) => e.preset === 'qingming')[0];
   eq(qmSaved.term, 'qingming', '清明的节气标识写入');
 
+  console.log('[18.1] 迟到的 applyLang 不能清掉正在进行的多选');
+  {
+    // 回归：补读语言设定值（getAppState → primeHostLang）会异步再跑一次 applyLang，
+    // 它重建 #fPresets 时若不恢复选中态，用户刚勾的多个节日会整片变回未选中，
+    // 保存按钮也从「添加 3 个」退回「保存」—— 看起来就是「节日多选被弄没了」。
+    const seed2 = { version: 1, settings: { lang: 'auto', hero: true }, events: [] };
+    const domB = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(wB) {
+        wB.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        wB.PluginAPI = {
+          cfg: { theme: 'light', appVersion: '19.3.1', platform: 'desktop', isDev: false },
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          getCurrentLanguage() { return 'en'; },
+          // 宿主 IPC 慢：设定值晚到 200ms，模拟用户已经在填表时被重建
+          getAppState() {
+            return new Promise((res) => setTimeout(() => res({
+              tasks: {}, tags: {}, projects: {},
+              globalConfig: { localization: { lng: 'zh' } }
+            }), 700));
+          },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook() {},
+          showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(JSON.stringify(seed2)); },
+          persistDataSynced() { return Promise.resolve(); },
+          openDialog() { return Promise.resolve('Cancel'); }
+        };
+      }
+    });
+    const dB = domB.window.document;
+    const $B = (s) => dB.querySelector(s);
+    const pressedB = () => Array.from(dB.querySelectorAll('#fPresets .ml-preset[aria-pressed="true"]'))
+      .map((b) => b.dataset.k);
+
+    await new Promise((r) => setTimeout(r, 120));
+    const saveIdle = $B('#mlSave').textContent;   // 单条时的文案（宿主语言是 en，这里不断言具体词）
+    $B('#mlAdd').click();
+    await new Promise((r) => setTimeout(r, 80));
+    dB.querySelector('#fKind button[data-v="festival"]').click();
+    await new Promise((r) => setTimeout(r, 40));
+    ['chunjie', 'yuanxiao', 'qingming'].forEach((k) => {
+      dB.querySelector('#fPresets .ml-preset[data-k="' + k + '"]').click();
+    });
+    eq(pressedB().join(','), 'chunjie,yuanxiao,qingming', '先勾上三个');
+    const saveMulti = $B('#mlSave').textContent;
+    ok(saveMulti !== saveIdle && /3/.test(saveMulti), '保存按钮显示数量：' + saveMulti);
+
+    // 等迟到的 applyLang 落地（getAppState 700ms，此刻还没回来）
+    await new Promise((r) => setTimeout(r, 700));
+    eq(pressedB().join(','), 'chunjie,yuanxiao,qingming', '重建后仍保持三个选中');
+    // 迟到的设定值是 zh：界面会从 en 切成中文，所以只断言「数量还在」，不断言具体词
+    ok(/3/.test($B('#mlSave').textContent), '保存按钮仍显示数量：' + $B('#mlSave').textContent);
+    ok($B('#mlSave').textContent !== saveIdle, '也没有退回单条文案');
+    ok(/3/.test($B('#fPresetHint').textContent), '提示文案仍是「已选 3 个」');
+    eq($B('#fPresets .ml-preset[data-k=""]').getAttribute('aria-pressed'), 'false', '「自定义」不会变回按下态');
+    eq($B('#fTitleWrap').hidden, true, '多选时名称仍然隐藏');
+
+    // 真正保存仍然是批量加入
+    $B('#mlSave').click();
+    await new Promise((r) => setTimeout(r, 400));
+    eq(dB.querySelectorAll('.ml-item').length, 3, '一次加入 3 个节日');
+    domB.window.close();
+  }
+
   console.log('[19] 倒数日过期删除线');
   eq($('#fRepeatWrap').hidden, true, '节日不显示倒数设置');
   eq($('#fArchiveWrap').hidden, true, '节日不显示归档开关');
-  $('#cdAdd').click();
+  $('#mlAdd').click();
   await wait(150);
   document.querySelector('#fKind button[data-v="countdown"]').click();
   await wait(60);
@@ -661,33 +750,33 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   $('#fDate').value = '2025-01-01';
   $('#fDate').dispatchEvent(new window.Event('change'));
   await wait(40);
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
 
   const expired = JSON.parse(window.__STORE__).events.filter((e) => e.title === '去年年会')[0];
   ok(!!expired, '过期倒数日已保存');
   eq(expired.repeat, false, '关掉了重新开始倒数');
-  eq(byId(expired.id).querySelector('.cd-item-title em').textContent, '去年年会', '名称文字完整');
-  ok(!!byId(expired.id).querySelector('.cd-item-name--done span'), '过期倒数日名称加删除线（画在内层 span 上）');
-  eq(byId(expired.id).querySelector('.cd-tag').textContent, '过期的倒数日', '过期后标签改为「过期的倒数日」');
-  eq(byId(expired.id).querySelector('.cd-item-num i').textContent, '已过天数', '过期后显示已过天数');
+  eq(byId(expired.id).querySelector('.ml-item-title em').textContent, '去年年会', '名称文字完整');
+  ok(!!byId(expired.id).querySelector('.ml-item-name--done span'), '过期倒数日名称加删除线（画在内层 span 上）');
+  eq(byId(expired.id).querySelector('.ml-tag').textContent, '过期的倒数日', '过期后标签改为「过期的倒数日」');
+  eq(byId(expired.id).querySelector('.ml-item-num i').textContent, '已过天数', '过期后显示已过天数');
 
   // 过期即划掉，没有开关可关
-  $('#cdSettings').click();
+  $('#mlSettings').click();
   await wait(150);
   eq($('#sStrike'), null, '设置里已没有删除线开关');
-  ok($('#cdSetLayer').textContent.indexOf('删除线') === -1, '设置面板不再出现删除线文案');
-  const setLabels = [].map.call(document.querySelectorAll('#cdSetLayer .cd-label'), (n) => n.textContent.trim());
+  ok($('#mlSetLayer').textContent.indexOf('删除线') === -1, '设置面板不再出现删除线文案');
+  const setLabels = [].map.call(document.querySelectorAll('#mlSetLayer .ml-label'), (n) => n.textContent.trim());
   ok(setLabels.indexOf('显示') === -1, '「显示」分组随开关一并移除（现存分组：' + setLabels.join(' / ') + '）');
-  $('#cdSetClose').click();
+  $('#mlSetClose').click();
   await wait(420);
   eq(JSON.parse(window.__STORE__).settings.strikeExpired, undefined, '旧字段不再写回同步数据');
-  ok(!!byId(expired.id).querySelector('.cd-item-name--done span'), '无需设置，过期倒数日默认带删除线');
-  eq(byId(expired.id).querySelector('.cd-tag').textContent, '过期的倒数日', '标签仍标明过期');
+  ok(!!byId(expired.id).querySelector('.ml-item-name--done span'), '无需设置，过期倒数日默认带删除线');
+  eq(byId(expired.id).querySelector('.ml-tag').textContent, '过期的倒数日', '标签仍标明过期');
   ok(!!byId(expired.id), '条目本身还在');
 
   // 打开了「过期后重新开始倒数」的倒数日不算过期，不划线
-  $('#cdAdd').click();
+  $('#mlAdd').click();
   await wait(150);
   document.querySelector('#fKind button[data-v="countdown"]').click();
   await wait(60);
@@ -696,26 +785,26 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
   $('#fDate').value = '2025-01-01';
   $('#fDate').dispatchEvent(new window.Event('change'));
   await wait(40);
-  $('#cdSave').click();
+  $('#mlSave').click();
   await wait(450);
   const repeatEv = JSON.parse(window.__STORE__).events.filter((e) => e.title === '每年年会')[0];
   ok(!!repeatEv && repeatEv.repeat === true, '重复倒数日已保存');
-  ok(!byId(repeatEv.id).querySelector('.cd-item-name--done'), '开启了重复的过期日期不加删除线');
-  eq(byId(repeatEv.id).querySelector('.cd-item-num i').textContent, '剩余天数', '重复倒数日按剩余天数显示');
+  ok(!byId(repeatEv.id).querySelector('.ml-item-name--done'), '开启了重复的过期日期不加删除线');
+  eq(byId(repeatEv.id).querySelector('.ml-item-num i').textContent, '剩余天数', '重复倒数日按剩余天数显示');
 
   // 生日/纪念日/节日不受影响
-  ok(!document.querySelector('.cd-item[data-id="b2"] .cd-item-name--done'), '生日不加删除线');
-  eq(document.querySelector('.cd-item[data-id="b2"] .cd-tag').textContent, '生日', '生日的标签不变');
+  ok(!document.querySelector('.ml-item[data-id="b2"] .ml-item-name--done'), '生日不加删除线');
+  eq(document.querySelector('.ml-item[data-id="b2"] .ml-tag').textContent, '生日', '生日的标签不变');
 
   console.log('[20] 清除数据缓存（二次确认）');
   {
     const before = JSON.parse(window.__STORE__).events.length;
     ok(before > 0, '清除前有 ' + before + ' 条');
-    window.localStorage.setItem('cd-task-map-v1', '{"task_1":"b1"}');
-    window.localStorage.setItem('cd-remind-seen', '{"k":1}');
-    window.localStorage.setItem('cd-handled-v1', '{"k":1}');
+    window.localStorage.setItem('ml-task-map-v1', '{"task_1":"b1"}');
+    window.localStorage.setItem('ml-remind-seen', '{"k":1}');
+    window.localStorage.setItem('ml-handled-v1', '{"k":1}');
 
-    $('#cdSettings').click();
+    $('#mlSettings').click();
     await wait(150);
     eq($('#sClear').textContent.trim(), '清除里程碑数据缓存', '设置里有清除按钮');
     ok(/当前共 \d+ 个事项/.test($('#sDataInfo').textContent), '数据概况显示条数：' + $('#sDataInfo').textContent);
@@ -725,7 +814,7 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     $('#sClear').click();
     await wait(200);
     eq(JSON.parse(window.__STORE__).events.length, before, '第一次确认取消后数据不变');
-    eq(document.querySelectorAll('.cd-item').length, before, '列表不变');
+    eq(document.querySelectorAll('.ml-item').length, before, '列表不变');
 
     // 第一次「继续」、第二次「取消」→ 仍然不删
     window.__answers = ['继续', '取消'];
@@ -740,33 +829,33 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     await wait(350);
     const after = JSON.parse(window.__STORE__);
     eq(after.events.length, 0, '数据已清空');
-    eq(after.version, 6, '写入的是当前数据格式');
+    eq(after.version, 1, '写入的是当前数据格式');
     ok(window.__SAVES__.length > saves, '立即触发了一次写入');
-    eq(document.querySelectorAll('.cd-item').length, 0, '列表清空');
-    eq($('#cdSetLayer').hidden, true, '清除后关闭设置面板');
-    eq(window.localStorage.getItem('cd-task-map-v1'), null, '本机任务映射表已清');
-    eq(window.localStorage.getItem('cd-remind-seen'), null, '本机已提示记录已清');
-    eq(window.localStorage.getItem('cd-handled-v1'), null, '本机已处理记录已清');
+    eq(document.querySelectorAll('.ml-item').length, 0, '列表清空');
+    eq($('#mlSetLayer').hidden, true, '清除后关闭设置面板');
+    eq(window.localStorage.getItem('ml-task-map-v1'), null, '本机任务映射表已清');
+    eq(window.localStorage.getItem('ml-remind-seen'), null, '本机已提示记录已清');
+    eq(window.localStorage.getItem('ml-handled-v1'), null, '本机已处理记录已清');
 
     // 清空后还能继续用
-    $('#cdAdd').click();
+    $('#mlAdd').click();
     await wait(150);
     $('#fTitle').value = '清空后新建';
     $('#fDate').value = '2027-07-07';
     $('#fDate').dispatchEvent(new window.Event('change'));
     await wait(40);
-    $('#cdSave').click();
+    $('#mlSave').click();
     await wait(450);
     eq(JSON.parse(window.__STORE__).events.length, 1, '清空后可以继续新建');
-    eq(document.querySelectorAll('.cd-item').length, 1, '新条目正常显示');
+    eq(document.querySelectorAll('.ml-item').length, 1, '新条目正常显示');
   }
 
   console.log('[21] 跟随软件语言 / 手动切换');
   {
     // 宿主语言 = 英文，插件语言设为 auto → 界面应为英文
     const seed = {
-      version: 6,
-      settings: { lang: 'auto', taskProject: 'Milestones', hero: true },
+      version: 1,
+      settings: { lang: 'auto', taskTag: 'milestone', hero: true },
       events: [{ id: 'l1', title: 'Mom birthday', kind: 'birthday', calendar: 'solar',
         date: '1990-05-12', repeat: true, color: '#d6336c', note: '' }]
     };
@@ -795,33 +884,33 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     const $3 = (s) => d3.querySelector(s);
     await new Promise((r) => setTimeout(r, 300));
 
-    eq($3('.cd-title').textContent, 'Milestones', '标题跟随软件语言（英文）');
-    eq($3('.cd-chip[data-f="all"]').textContent, 'All', '筛选条为英文');
-    ok($3('.cd-sub').textContent.indexOf('1 entry') === 0, '副标题用英文单数：' + $3('.cd-sub').textContent);
-    ok($3('.cd-hero-label').textContent.indexOf('in') !== -1, '置顶卡片文案为英文');
-    ok($3('.cd-item-num i').textContent === 'days left' || $3('.cd-item-num i').textContent === 'today',
+    eq($3('.ml-title').textContent, 'Milestone', '标题跟随软件语言（英文，品牌名单数）');
+    eq($3('.ml-chip[data-f="all"]').textContent, 'All', '筛选条为英文');
+    ok($3('.ml-sub').textContent.indexOf('1 entry') === 0, '副标题用英文单数：' + $3('.ml-sub').textContent);
+    ok($3('.ml-hero-label').textContent.indexOf('in') !== -1, '置顶卡片文案为英文');
+    ok($3('.ml-item-num i').textContent === 'days left' || $3('.ml-item-num i').textContent === 'today',
       '天数单位英文化');
-    eq($3('.cd-tag').textContent, 'Birthday', '类型标签英文化');
+    eq($3('.ml-tag').textContent, 'Birthday', '类型标签英文化');
 
     // 在插件里手动选中文：界面切换 + 写入同步数据
-    $3('#cdSettings').click();
+    $3('#mlSettings').click();
     await new Promise((r) => setTimeout(r, 420));
     ok(!!$3('#sLang button[data-v="zh"]'), '语言列表按已注册语言包生成');
     $3('#sLang button[data-v="zh"]').click();
     await new Promise((r) => setTimeout(r, 240));
-    eq($3('.cd-title').textContent, '里程碑', '手动选中文后界面切中文');
-    eq($3('.cd-sub').textContent[0], '1', '副标题回到中文计数');
+    eq($3('.ml-title').textContent, '里程碑', '手动选中文后界面切中文');
+    eq($3('.ml-sub').textContent[0], '1', '副标题回到中文计数');
     ok(JSON.parse(saves[saves.length - 1]).settings.lang === 'zh', '语言偏好写入同步数据');
 
     // 软件里切成英文（languageChange）→ 偏好是 zh，不应被覆盖
     hooks.languageChange && hooks.languageChange({ newLanguage: 'en' });
     await new Promise((r) => setTimeout(r, 120));
-    eq($3('.cd-title').textContent, '里程碑', '显式选定语言时不跟随软件语言');
+    eq($3('.ml-title').textContent, '里程碑', '显式选定语言时不跟随软件语言');
 
     // 切回自动 → 立刻跟随软件语言（英文）
     $3('#sLang button[data-v="auto"]').click();
     await new Promise((r) => setTimeout(r, 240));
-    eq($3('.cd-title').textContent, 'Milestones', '自动模式下跟随软件语言');
+    eq($3('.ml-title').textContent, 'Milestone', '自动模式下跟随软件语言');
     eq(JSON.parse(saves[saves.length - 1]).settings.lang, 'auto', '自动模式写回 auto');
     dom3.window.close();
   }
@@ -832,8 +921,8 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     // 语言只能通过 getCurrentLanguage() 拿到；切语言靠 languageChange 载荷。之前只读 cfg.lang，
     // 结果「自动」永远跟着系统语言走 —— 这条用例守住那个回归。
     const seed = {
-      version: 6,
-      settings: { lang: 'auto', taskProject: 'Milestones', hero: true },
+      version: 1,
+      settings: { lang: 'auto', taskTag: 'milestone', hero: true },
       events: [{ id: 'g1', title: 'Mom birthday', kind: 'birthday', calendar: 'solar',
         date: '1990-05-12', repeat: true, color: '#d6336c', note: '' }]
     };
@@ -863,20 +952,20 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     const $4 = (s) => d4.querySelector(s);
     await new Promise((r) => setTimeout(r, 300));
 
-    eq($4('.cd-title').textContent, 'Milestones', '自动模式按 getCurrentLanguage() 取英文');
+    eq($4('.ml-title').textContent, 'Milestone', '自动模式按 getCurrentLanguage() 取英文');
 
     // 软件里切成中文：载荷是 { code, newLanguage }，插件要立刻跟着变
     hostLang = 'zh';
     hooks.languageChange && hooks.languageChange({ code: 'zh', newLanguage: 'zh' });
     await new Promise((r) => setTimeout(r, 200));
-    eq($4('.cd-title').textContent, '里程碑', '切语言后界面立刻跟随（不依赖 cfg.lang）');
-    eq($4('.cd-chip[data-f="all"]').textContent, '全部', '筛选条跟着切中文');
+    eq($4('.ml-title').textContent, '里程碑', '切语言后界面立刻跟随（不依赖 cfg.lang）');
+    eq($4('.ml-chip[data-f="all"]').textContent, '全部', '筛选条跟着切中文');
 
     // 再切回英文
     hostLang = 'en';
     hooks.languageChange && hooks.languageChange({ newLanguage: 'en' });
     await new Promise((r) => setTimeout(r, 200));
-    eq($4('.cd-title').textContent, 'Milestones', '再切回英文同样生效');
+    eq($4('.ml-title').textContent, 'Milestone', '再切回英文同样生效');
     dom4.window.close();
   }
 
@@ -917,14 +1006,14 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     const $5 = (s) => d5.querySelector(s);
     await new Promise((r) => setTimeout(r, 300));
 
-    $5('.cd-item[data-id="cx"]').click();
+    $5('.ml-item[data-id="cx"]').click();
     await new Promise((r) => setTimeout(r, 200));
-    eq($5('#cdLayer').hidden, false, '弹层打开');
+    eq($5('#mlLayer').hidden, false, '弹层打开');
     eq($5('#fLD').value, '29', '农历日控件回填为该月最后一天，不留空值');
     ok(!$5('#fLunarPreview').className.includes('warn'), '预览不报「日期不存在」：' + $5('#fLunarPreview').textContent);
     ok($5('#fLunarPreview').textContent.includes('对应公历'), '预览给出对应公历日期');
 
-    $5('#cdSave').click();
+    $5('#mlSave').click();
     await new Promise((r) => setTimeout(r, 400));
     const saved = JSON.parse(dom5.window.__STORE__).events.filter((e) => e.id === 'cx')[0];
     eq(saved.lunar.day, 30, '仍按腊月三十存储（小月由核心逻辑回落）');
@@ -942,7 +1031,7 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
       repeat: false, color: '#1c7ed6', note: ''
     });
     const seed = {
-      version: 6, settings: { lang: 'zh' },
+      version: 1, settings: { lang: 'zh' },
       events: [mk('d0', 0), mk('d1', 1), mk('d2', 2), mk('d3', 3), mk('d5', 5), mk('bd1', 1, 'birthday')]
     };
     const dom6 = new JSDOM(html, {
@@ -968,7 +1057,7 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     await new Promise((r) => setTimeout(r, 300));
 
     const cell = (id) => {
-      const box = d6.querySelector('.cd-item[data-id="' + id + '"] .cd-item-num');
+      const box = d6.querySelector('.ml-item[data-id="' + id + '"] .ml-item-num');
       const b = box.querySelector('b');
       const i = box.querySelector('i');
       return { text: b.textContent, word: b.className.includes('is-word'), unit: i ? i.textContent : '' };
@@ -985,15 +1074,15 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     eq(cell('bd1').text, '明天', '生日同样适用（剩余语义一致）');
 
     // 置顶卡片：标签从「距离…还有」换成「…就是 / …就在」，大数字换成文字
-    const hero = d6.querySelector('.cd-hero');
-    ok(hero.querySelector('.cd-hero-label').textContent.includes('就是'), '今天：标签说「就是」');
-    eq(hero.querySelector('.cd-hero-num').textContent, '今天', '今天：大数字位显示文字');
-    ok(hero.querySelector('.cd-hero-num').className.includes('--word'), '文字状态带 --word 类，字号单独收过');
-    eq(hero.querySelectorAll('.cd-hero-num span').length, 0, '文字状态不显示「剩余天数」副标签');
+    const hero = d6.querySelector('.ml-hero');
+    ok(hero.querySelector('.ml-hero-label').textContent.includes('就是'), '今天：标签说「就是」');
+    eq(hero.querySelector('.ml-hero-num').textContent, '今天', '今天：大数字位显示文字');
+    ok(hero.querySelector('.ml-hero-num').className.includes('--word'), '文字状态带 --word 类，字号单独收过');
+    eq(hero.querySelectorAll('.ml-hero-num span').length, 0, '文字状态不显示「剩余天数」副标签');
     dom6.window.close();
 
     // 英文包：同样的三天内也要说 Today / Tomorrow，不能回落成裸键名
-    const seedEn = { version: 6, settings: { lang: 'en' }, events: [mk('e0', 0), mk('e1', 1)] };
+    const seedEn = { version: 1, settings: { lang: 'en' }, events: [mk('e0', 0), mk('e1', 1)] };
     const dom7 = new JSDOM(html, {
       runScripts: 'dangerously',
       pretendToBeVisual: true,
@@ -1014,11 +1103,82 @@ const byId = (id) => document.querySelector('.cd-item[data-id="' + id + '"]');
     });
     const d7 = dom7.window.document;
     await new Promise((r) => setTimeout(r, 300));
-    const enCell = (id) => d7.querySelector('.cd-item[data-id="' + id + '"] .cd-item-num b').textContent;
+    const enCell = (id) => d7.querySelector('.ml-item[data-id="' + id + '"] .ml-item-num b').textContent;
     eq(enCell('e0'), 'Today', '英文：Today');
     eq(enCell('e1'), 'Tomorrow', '英文：Tomorrow');
-    ok(d7.querySelector('.cd-hero-label').textContent.includes('is'), '英文置顶卡片用「… is」句式');
+    ok(d7.querySelector('.ml-hero-label').textContent.includes('is'), '英文置顶卡片用「… is」句式');
     dom7.window.close();
+  }
+
+  console.log('[22.3] 软件语言设成「跟随系统」时不能落到英文');
+  {
+    // 宿主的坑：语言设成「跟随系统」时 globalConfig.localization.lng 为空，
+    // PluginI18nService 的信号量停在默认值 en，getCurrentLanguage() 于是回报 'en'，
+    // 而界面其实是跟随系统（中文）。实测症状：中文系统 + 中文软件 -> 插件英文。
+    const seed = {
+      version: 1,
+      settings: { lang: 'auto', taskTag: 'milestone', hero: true },
+      events: [{ id: 'sys1', title: '妈妈生日', kind: 'birthday', calendar: 'solar',
+        date: '1990-05-12', repeat: true, color: '#d6336c', note: '' }]
+    };
+    const boot = (lngSetting, hostCur, navLang, lang) => {
+      const dom8 = new JSDOM(html, {
+        runScripts: 'dangerously',
+        pretendToBeVisual: true,
+        url: 'https://localhost/',
+        virtualConsole: vc,
+        beforeParse(w8) {
+          w8.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+          Object.defineProperty(w8.navigator, 'language', { value: navLang, configurable: true });
+          w8.PluginAPI = {
+            cfg: { theme: 'light', appVersion: '19.3.1', platform: 'desktop', isDev: false },
+            Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+            getCurrentLanguage() { return hostCur; },
+            getAppState() {
+              return Promise.resolve({ tasks: {}, tags: {}, projects: {},
+                globalConfig: { localization: { lng: lngSetting } } });
+            },
+            onReady(fn) { setTimeout(fn, 0); },
+            registerHook() {},
+            showIndexHtmlAsView() {}, showSnack() {},
+            loadSyncedData() { return Promise.resolve(JSON.stringify(seed)); },
+            persistDataSynced() { return Promise.resolve(); },
+            openDialog() { return Promise.resolve('Cancel'); }
+          };
+          if (lang) w8.__LANG__ = lang;
+        }
+      });
+      return dom8;
+    };
+
+    // 跟随系统（lng 空）+ 中文系统 + 宿主回报 en -> 中文
+    const follow = boot('', 'en', 'zh-CN');
+    await new Promise((r) => setTimeout(r, 320));
+    eq(follow.window.document.querySelector('.ml-title').textContent, '里程碑',
+      '跟随系统 + 中文系统 -> 中文界面');
+    follow.window.close();
+
+    // 软件里显式选了中文（lng = zh），但 getCurrentLanguage() 还没同步过来（回报 en）+ 英文系统
+    // -> 必须靠异步补读的设定值拿到中文，这是只有 getAppState() 能提供的信息
+    const forcedZh = boot('zh', 'en', 'en-US');
+    await new Promise((r) => setTimeout(r, 320));
+    eq(forcedZh.window.document.querySelector('.ml-title').textContent, '里程碑',
+      '软件设中文时补读设定值也切到中文');
+    forcedZh.window.close();
+
+    // 软件里显式选了英文（lng = en）+ 中文系统 -> 仍然是英文（不猜系统）
+    const forcedEn = boot('en', 'en', 'zh-CN');
+    await new Promise((r) => setTimeout(r, 320));
+    eq(forcedEn.window.document.querySelector('.ml-title').textContent, 'Milestone',
+      '软件显式设英文时保持英文');
+    forcedEn.window.close();
+
+    // 跟随系统 + 英文系统 -> 英文
+    const enSys = boot('', 'en', 'en-US');
+    await new Promise((r) => setTimeout(r, 320));
+    eq(enSys.window.document.querySelector('.ml-title').textContent, 'Milestone',
+      '跟随系统 + 英文系统 -> 英文界面');
+    enSys.window.close();
   }
 
   console.log('[23] 无运行时错误');

@@ -5,7 +5,7 @@
   var Core = window.EventCore;
   var I = window.I18N;
   // 脱离宿主（直接打开 dist/index.html）调试时的本地存档键；名与项目名保持一致
-  var DEV_KEY = 'sp-milestone-local-v1';
+  var DEV_KEY = 'ml-local-v1';
 
   function $(s) { return document.querySelector(s); }
 
@@ -98,6 +98,10 @@
 
   // 宿主没有给出语言时，用 languageChange 钩子带回的语言码兜底（见下方 hostLang）
   var hostLangCode = '';
+  // 软件里设定的语言（globalConfig.localization.lng）；空串 = 设成「跟随系统」
+  var hostLangSetting = '';
+  // getCurrentLanguage() 的最近一次结果
+  var hostLangCur = '';
 
   /** 本机系统语言（宿主没有给出语言时兜底） */
   function navLang() {
@@ -110,30 +114,50 @@
 
   /**
    * 宿主应用的语言，即「软件里设定的语言」。
-   * 19.x 的 PluginAPI.cfg 只有 { theme, appVersion, platform, isDev }，没有 lang，
-   * 所以首选 getCurrentLanguage()；老宿主 / 测试桩可能只给 cfg.lang（字符串或 { code }）。
-   * languageChange 钩子带回的语言码缓存在 hostLangCode 里，作为最后一道兜底。
+   * 三个来源合起来判断（为什么不能只信 getCurrentLanguage，见 I18N.pickHostLang 的注释）：
+   *   globalConfig.localization.lng（异步补读，最准）> getCurrentLanguage() > languageChange > 系统语言
    */
   function hostLang() {
     try {
       var P = window.PluginAPI;
       if (P && typeof P.getCurrentLanguage === 'function') {
         var cur = P.getCurrentLanguage();
-        if (cur) return cur;
+        if (cur) hostLangCur = cur;
       }
-      if (P && P.cfg) {
-        var c = P.cfg.lang;
-        if (c && typeof c === 'object' && c.code) return c.code;
-        if (typeof c === 'string' && c) return c;
-      }
-    } catch (e) { /* ignore */ }
-    return hostLangCode || navLang();
+    } catch (e) { /* 语言未就绪时继续用兜底值 */ }
+    return I.pickHostLang({
+      setting: hostLangSetting,
+      cur: hostLangCur,
+      switched: hostLangCode,
+      nav: navLang()
+    });
   }
 
-  /** languageChange 的载荷：{ code, newLanguage }，两个字段都认 */
+  /**
+   * 补读「软件里设定的语言」。
+   * getCurrentLanguage() 在「跟随系统」时会一直回报默认值 en（中文界面也一样），
+   * 只有 globalConfig.localization.lng 能区分「真的英文」和「跟随系统」。
+   * @returns {Promise<boolean>} 设定值是否发生变化
+   */
+  function primeHostLang() {
+    var P = window.PluginAPI;
+    if (!P || typeof P.getAppState !== 'function') return Promise.resolve(false);
+    return apiCall('getAppState').then(function (st) {
+      var cfg = st && st.globalConfig;
+      var loc = cfg && cfg.localization;
+      var lng = loc && typeof loc.lng === 'string' ? loc.lng : '';
+      if (lng === hostLangSetting) return false;
+      hostLangSetting = lng;
+      return true;
+    }, function () { return false; });
+  }
+
+  /**
+   * languageChange 的载荷：{ code, newLanguage }。
+   * 两个字段都取 —— 实测切回同一批语言时宿主只带 newLanguage，只认 code 会一直用上一次的值。
+   */
   function payloadLang(payload) {
     if (!payload) return '';
-    if (typeof payload === 'string') return payload;
     return payload.code || payload.newLanguage || '';
   }
 
@@ -169,17 +193,42 @@
     I.apply(document);
     buildLangSeg();
 
+    // 表单开着时要重建下拉与预设按钮：重建会把用户当前的选择清空，先把农历三列存下来。
+    // 这条路径现在不只在切语言时走 —— 补读语言设定值（primeHostLang）也会异步触发一次，
+    // 所以不能假设「此刻用户没在填表」。
+    var layer = $('#mlLayer');
+    var drafting = !!(layer && !layer.hidden && state.draft);
+    var keepLunar = null;
+    if (drafting) {
+      keepLunar = {
+        y: +$('#fLY').value || 0,
+        m: +$('#fLM').value || 0,
+        d: +$('#fLD').value || 0,
+        leap: !!$('#fLeap').checked
+      };
+    }
+
     buildYearSelect();
     buildMonthSelect();
     buildPresets();
-    var layer = $('#cdLayer');
     if (!layer || layer.hidden) buildColors((state.draft && state.draft.color) || Core.COLORS[0]);
-    // 表单开着时被切语言：标题是按语言拼的，补回来
-    if (layer && !layer.hidden && state.draft) {
+    if (drafting) {
+      // 恢复农历下拉的当前值（含该月天数变化后的日钳位）
+      if (keepLunar.y) $('#fLY').value = String(keepLunar.y);
+      if (keepLunar.m) {
+        $('#fLM').value = String(keepLunar.m);
+        buildDaySelect(keepLunar.y || L.MIN_YEAR, keepLunar.m, keepLunar.leap, keepLunar.d);
+        if (keepLunar.leap) $('#fLeap').checked = true;
+      }
+      // 标题、保存按钮数量、预设提示、名称/颜色/历法行的显隐都是按语言或选中态派生的，一并补回来
       var k = segValue('#fKind') || state.draft.kind;
-      $('#cdSheetTitle').textContent = state.editingId
+      $('#mlSheetTitle').textContent = state.editingId
         ? t('sheet.edit')
         : t('sheet.new', { k: kindLower(k) });
+      refreshPresetRow(k);
+      refreshCalendarRow();
+      refreshSaveLabel();
+      refreshRemindHint();
     }
   }
 
@@ -236,7 +285,7 @@
 
   var toastTimer = null;
   function toast(msg) {
-    var el = $('#cdToast');
+    var el = $('#mlToast');
     if (!el) return;
     el.textContent = msg;
     el.classList.add('on');
@@ -260,7 +309,7 @@
       dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
     }
     var next = dark ? 'dark' : 'light';
-    if (html.getAttribute('data-cd-theme') !== next) html.setAttribute('data-cd-theme', next);
+    if (html.getAttribute('data-ml-theme') !== next) html.setAttribute('data-ml-theme', next);
   }
 
   /**
@@ -285,7 +334,7 @@
         themeObserver = new window.MutationObserver(detectTheme);
         themeObserver.observe(document.documentElement, {
           attributes: true,
-          // 不要监听 data-cd-theme：那是 detectTheme 自己写的，监听它会自我触发一轮无谓的重算
+          // 不要监听 data-ml-theme：那是 detectTheme 自己写的，监听它会自我触发一轮无谓的重算
           attributeFilter: ['class', 'style', 'data-theme']
         });
         if (document.body) {
@@ -399,7 +448,7 @@
   }
 
   function renderSub(rows, archivedCount) {
-    var el = $('#cdSub');
+    var el = $('#mlSub');
     if (isArchiveView()) {
       el.textContent = archivedCount
         ? t('sub.archived', { n: archivedCount })
@@ -427,16 +476,16 @@
 
   /** 归档筛选胶囊上的计数 */
   function renderArchiveEntry(count) {
-    var chip = document.querySelector('.cd-chip[data-f="archive"]');
+    var chip = document.querySelector('.ml-chip[data-f="archive"]');
     if (chip) chip.textContent = count ? t('chip.archiveN', { n: count }) : t('chip.archive');
   }
 
   /** 分区为空时的等高占位，避免切换分类时卡片突然消失、页面跳动 */
   function heroPlaceholderHtml(title, hint) {
-    return '<div class="cd-hero cd-hero--empty">' +
-        '<div class="cd-hero-label">' + esc(title) + '</div>' +
-        '<div class="cd-hero-num cd-hero-num--empty">—</div>' +
-        '<div class="cd-hero-meta">' + esc(hint) + '</div>' +
+    return '<div class="ml-hero ml-hero--empty">' +
+        '<div class="ml-hero-label">' + esc(title) + '</div>' +
+        '<div class="ml-hero-num ml-hero-num--empty">—</div>' +
+        '<div class="ml-hero-meta">' + esc(hint) + '</div>' +
       '</div>';
   }
 
@@ -451,7 +500,7 @@
   var heroKey = '';
 
   function renderHero(row, today) {
-    var el = $('#cdHero');
+    var el = $('#mlHero');
     var rc;
     var html;
 
@@ -475,8 +524,8 @@
       } else label = I.html('hero.remainLabel', { name: esc(row.name) });
 
       var heroCls = remain
-        ? 'cd-hero-num cd-hero-num--remain' + (disp.word ? ' cd-hero-num--word' : '')
-        : 'cd-hero-num cd-hero-num--elapsed';
+        ? 'ml-hero-num ml-hero-num--remain' + (disp.word ? ' ml-hero-num--word' : '')
+        : 'ml-hero-num ml-hero-num--elapsed';
       // 文字状态不再需要「剩余天数」单位，数字状态保持原样
       var unit = disp && disp.word ? '' : '<span>' + esc(t(remain ? 'hero.unitRemain' : 'hero.unitElapsed')) + '</span>';
       var num = '<div class="' + heroCls + '">' + esc(disp ? disp.text : String(m.days)) + unit + '</div>';
@@ -495,16 +544,16 @@
       if (p !== null) {
         var pct = Math.round(p * 100);
         bar =
-          '<div class="cd-bar"><i style="width:' + pct + '%"></i></div>' +
-          '<div class="cd-bar-text"><span>' + esc(t('hero.barDone', { p: pct })) + '</span><span>' +
+          '<div class="ml-bar"><i style="width:' + pct + '%"></i></div>' +
+          '<div class="ml-bar-text"><span>' + esc(t('hero.barDone', { p: pct })) + '</span><span>' +
             esc(t('hero.barTotal')) + '</span></div>';
       }
 
       html =
-        '<div class="cd-hero" data-id="' + esc(ev.id) + '">' +
-          '<div class="cd-hero-label">' + label + '</div>' +
+        '<div class="ml-hero" data-id="' + esc(ev.id) + '">' +
+          '<div class="ml-hero-label">' + label + '</div>' +
           num +
-          '<div class="cd-hero-meta">' + meta + '</div>' +
+          '<div class="ml-hero-meta">' + meta + '</div>' +
           bar +
         '</div>';
     }
@@ -512,7 +561,7 @@
     var key = rc + '|' + html;
     if (key === heroKey) return;
     heroKey = key;
-    el.style.setProperty('--cd-rc', rc);
+    el.style.setProperty('--ml-rc', rc);
     el.innerHTML = html;
   }
 
@@ -539,7 +588,7 @@
       unitText = t('unit.overflow');
       bAttr = ' class="is-txt"';
     } else if (m.mode === 'remaining') {
-      numCls = ' cd-item-num--remain';
+      numCls = ' ml-item-num--remain';
       var disp = remainDisplay(m.days);
       numText = disp.text;
       unitText = disp.unit;
@@ -547,7 +596,7 @@
     } else {
       numText = String(m.days);
       unitText = m.days === 0 ? t('unit.todayElapsed') : t('unit.elapsed');
-      numCls = ' cd-item-num--elapsed';
+      numCls = ' ml-item-num--elapsed';
     }
 
     // 日期标签在 computeRows 里已经算好，这里不再重复换算农历
@@ -557,28 +606,28 @@
 
     // 铃铛图标走 <symbol> + <use>，每条记录只输出一个 use，HTML 体积小一半以上
     var bell = Core.hasReminder(ev)
-      ? '<svg class="cd-bell" aria-hidden="true"><use href="#cd-bell-ico"/></svg>'
+      ? '<svg class="ml-bell" aria-hidden="true"><use href="#ml-bell-ico"/></svg>'
       : '';
 
     var tag;
     if (isArchiveView()) {
-      tag = '<span class="cd-tag cd-tag--muted">' + esc(t('tag.archived', { k: Core.KINDS[ev.kind] })) + '</span>';
+      tag = '<span class="ml-tag ml-tag--muted">' + esc(t('tag.archived', { k: Core.KINDS[ev.kind] })) + '</span>';
     } else if (expired) {
       // 过期了就把类型标签换成更直白的说法，一眼看得出这条已经结束
-      tag = '<span class="cd-tag cd-tag--expired">' + esc(t('tag.expired')) + '</span>';
+      tag = '<span class="ml-tag ml-tag--expired">' + esc(t('tag.expired')) + '</span>';
     } else {
-      tag = '<span class="cd-tag">' + esc(Core.KINDS[ev.kind]) + '</span>';
+      tag = '<span class="ml-tag">' + esc(Core.KINDS[ev.kind]) + '</span>';
     }
 
-    return '<div class="cd-item' + (isToday ? ' is-today' : '') + '" data-id="' + esc(ev.id) + '"' +
-        ' style="--cd-rc:' + rgb + '" role="button" tabindex="0">' +
-        '<div class="cd-item-main">' +
-          '<div class="cd-item-title"><em' + (expired ? ' class="cd-item-name--done"' : '') + '>' +
+    return '<div class="ml-item' + (isToday ? ' is-today' : '') + '" data-id="' + esc(ev.id) + '"' +
+        ' style="--ml-rc:' + rgb + '" role="button" tabindex="0">' +
+        '<div class="ml-item-main">' +
+          '<div class="ml-item-title"><em' + (expired ? ' class="ml-item-name--done"' : '') + '>' +
             '<span>' + esc(r.name) + '</span>' +
             '</em>' + bell + tag + '</div>' +
-          '<div class="cd-item-sub">' + esc(sub) + '</div>' +
+          '<div class="ml-item-sub">' + esc(sub) + '</div>' +
         '</div>' +
-        '<div class="cd-item-num' + numCls + '">' +
+        '<div class="ml-item-num' + numCls + '">' +
           '<b' + bAttr + '>' + esc(numText) + '</b>' +
           (unitText ? '<i>' + esc(unitText) + '</i>' : '') +
         '</div>' +
@@ -587,15 +636,15 @@
 
   function emptyHtml() {
     if (isArchiveView()) {
-      return '<div class="cd-empty">' +
-          '<div class="cd-empty-ico">' +
+      return '<div class="ml-empty">' +
+          '<div class="ml-empty-ico">' +
             '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
               '<rect x="3" y="4" width="18" height="4" rx="1.4"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/>' +
               '<path d="M10 12h4"/></svg>' +
           '</div>' +
           '<h3>' + esc(t('sub.archivedEmpty')) + '</h3>' +
           '<p>' + esc(t('empty.archiveHint')) + '</p>' +
-          '<button type="button" class="cd-btn-ghost" data-add>' + esc(t('empty.archiveBtn')) + '</button>' +
+          '<button type="button" class="ml-btn-ghost" data-add>' + esc(t('empty.archiveBtn')) + '</button>' +
         '</div>';
     }
     var filtered = state.filter !== 'all';
@@ -604,15 +653,15 @@
     var desc = filtered
       ? t('empty.filterDesc', { k: kindLower(state.filter) })
       : t('empty.allDesc');
-    return '<div class="cd-empty">' +
-        '<div class="cd-empty-ico">' +
+    return '<div class="ml-empty">' +
+        '<div class="ml-empty-ico">' +
           '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">' +
             '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>' +
             '<circle cx="12" cy="16" r="2.2"/></svg>' +
         '</div>' +
         '<h3>' + esc(head) + '</h3>' +
         '<p>' + esc(desc) + '</p>' +
-        '<button type="button" class="cd-btn-ghost" data-add>' +
+        '<button type="button" class="ml-btn-ghost" data-add>' +
           esc(t('empty.btn', { k: filtered ? kindLower(state.filter) : kindLower('') })) + '</button>' +
       '</div>';
   }
@@ -621,7 +670,7 @@
   var listKey = null;
 
   function renderList(list) {
-    var el = $('#cdList');
+    var el = $('#mlList');
     var html = list.length ? list.map(itemHtml).join('') : emptyHtml();
     if (html === listKey) return;
     listKey = html;
@@ -655,7 +704,7 @@
     if (settings.hero === false) {
       if (heroKey !== '') {
         heroKey = '';
-        $('#cdHero').innerHTML = '';
+        $('#mlHero').innerHTML = '';
       }
     } else {
       // 置顶卡片跟随当前分区：取该分区排序后的第一条；归档视图不置顶
@@ -672,7 +721,7 @@
     renderSub(rows, archivedCount);
     renderArchiveEntry(archivedCount);
 
-    Array.prototype.forEach.call(document.querySelectorAll('.cd-chip'), function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll('.ml-chip'), function (b) {
       b.setAttribute('aria-pressed', String(b.dataset.f === state.filter));
     });
   }
@@ -745,7 +794,7 @@
 
   function buildColors(selected) {
     $('#fColors').innerHTML = Core.COLORS.map(function (c) {
-      return '<button type="button" class="cd-color" data-c="' + c + '" aria-pressed="' +
+      return '<button type="button" class="ml-color" data-c="' + c + '" aria-pressed="' +
         (c === selected ? 'true' : 'false') + '" style="background:' + c + ';color:' + c +
         '" aria-label="' + esc(t('form.colorAria', { c: c })) + '"></button>';
     }).join('');
@@ -780,11 +829,11 @@
     // 否则预览报「日期不存在」而保存却成功，用户看到的两套结论互相矛盾
     var solar = Core.resolveLunar(l.year, l.month, l.day, l.isLeap, 'regular');
     if (!solar) {
-      p.className = 'cd-hint warn';
+      p.className = 'ml-hint warn';
       p.textContent = t('lunar.invalid');
       return;
     }
-    p.className = 'cd-hint';
+    p.className = 'ml-hint';
     p.textContent = t('lunar.preview', {
       lunar: L.lunarText(l.month, l.day, l.isLeap),
       date: Core.ymd(solar),
@@ -823,24 +872,27 @@
     ['solar', 'lunar', 'term'].forEach(function (g) {
       var items = Core.FESTIVALS.filter(function (f) { return f.group === g; });
       if (!items.length) return;
-      html += '<div class="cd-preset-group">' + esc(Core.FESTIVAL_GROUPS[g]) + '</div>' +
-        '<div class="cd-preset-list">' + items.map(function (f) {
-          return '<button type="button" class="cd-preset" data-k="' + f.key + '" aria-pressed="false">' +
+      html += '<div class="ml-preset-group">' + esc(Core.FESTIVAL_GROUPS[g]) + '</div>' +
+        '<div class="ml-preset-list">' + items.map(function (f) {
+          return '<button type="button" class="ml-preset" data-k="' + f.key + '" aria-pressed="false">' +
             esc(f.name) + '</button>';
         }).join('') + '</div>';
     });
-    html += '<div class="cd-preset-group">' + esc(t('group.custom')) + '</div>' +
-      '<div class="cd-preset-list">' +
-        '<button type="button" class="cd-preset cd-preset--free" data-k="" aria-pressed="false">' +
+    html += '<div class="ml-preset-group">' + esc(t('group.custom')) + '</div>' +
+      '<div class="ml-preset-list">' +
+        '<button type="button" class="ml-preset ml-preset--free" data-k="" aria-pressed="false">' +
           esc(t('form.customFestival')) + '</button>' +
       '</div>';
     $('#fPresets').innerHTML = html;
+    // 重建后立刻恢复选中态：这段会在切语言 / 补读语言设定值时被重新调用，
+    // 不恢复的话用户正选着的多个节日会整片变回未选中（看起来就是「多选坏了」）
+    markPreset(selectedPresets());
   }
 
   /** 高亮选中的预设；「自定义」在没有选中任何预设时是按下态 */
   function markPreset(keys) {
     var on = keys || [];
-    Array.prototype.forEach.call(document.querySelectorAll('#fPresets .cd-preset'), function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll('#fPresets .ml-preset'), function (b) {
       var k = b.dataset.k || '';
       var pressed = k === '' ? on.length === 0 : on.indexOf(k) !== -1;
       b.setAttribute('aria-pressed', String(pressed));
@@ -876,7 +928,7 @@
 
   /** 保存按钮在批量添加时显示数量，避免用户以为只加了一个 */
   function refreshSaveLabel() {
-    var el = $('#cdSave');
+    var el = $('#mlSave');
     if (!el) return;
     var kind = segValue('#fKind') || 'countdown';
     var n = (!state.editingId && kind === 'festival') ? selectedPresets().length : 0;
@@ -887,7 +939,7 @@
     var el = $('#fPresetHint');
     if (!el) return;
     var keys = selectedPresets();
-    el.className = 'cd-hint';
+    el.className = 'ml-hint';
 
     if (!keys.length) {
       el.textContent = t('preset.none');
@@ -1025,8 +1077,9 @@
   }
 
   function fillSheet(d, isEdit) {
-    $('#cdSheetTitle').textContent = isEdit ? t('sheet.edit') : t('sheet.new', { k: kindLower(d.kind) });
+    $('#mlSheetTitle').textContent = isEdit ? t('sheet.edit') : t('sheet.new', { k: kindLower(d.kind) });
     $('#fTitle').value = d.title || '';
+    markTitleInvalid(false);
     $('#fNote').value = d.note || '';
     setSeg('#fKind', d.kind);
     setSeg('#fCalendar', d.calendar);
@@ -1051,7 +1104,7 @@
     } else {
       solarToLunarFields(Core.parseYMD(d.date) || new Date());
     }
-    $('#cdDelete').hidden = !isEdit;
+    $('#mlDelete').hidden = !isEdit;
     refreshRemindHint();
   }
 
@@ -1064,24 +1117,24 @@
     var taskOn = !!($('#fTask') && $('#fTask').checked);
     var snackOn = !!($('#fSnack') && $('#fSnack').checked);
     var archived = !!($('#fArchived') && $('#fArchived').checked);
-    var project = (state.data.settings || Core.emptySettings()).taskProject;
+    var tag = (state.data.settings || Core.emptySettings()).taskTag;
 
     if (archived) {
-      el.className = 'cd-hint warn';
+      el.className = 'ml-hint warn';
       el.textContent = t('remind.hintArchived');
       return;
     }
     if (taskOn && snackOn) {
-      el.className = 'cd-hint';
-      el.textContent = t('remind.hintBoth', { p: project });
+      el.className = 'ml-hint';
+      el.textContent = t('remind.hintBoth', { t: tag });
     } else if (taskOn) {
-      el.className = 'cd-hint';
-      el.textContent = t('remind.hintTask', { p: project });
+      el.className = 'ml-hint';
+      el.textContent = t('remind.hintTask', { t: tag });
     } else if (snackOn) {
-      el.className = 'cd-hint';
+      el.className = 'ml-hint';
       el.textContent = t('remind.hintSnack');
     } else {
-      el.className = 'cd-hint warn';
+      el.className = 'ml-hint warn';
       el.textContent = t('remind.hintNone');
     }
   }
@@ -1091,7 +1144,7 @@
   var setTimer = null;
 
   // 本机缓存键，与 plugin-main.js 里的 SEEN_KEY / MAP_KEY / DONE_KEY 保持一致
-  var HOST_KEYS = ['cd-task-map-v1', 'cd-remind-seen', 'cd-handled-v1'];
+  var HOST_KEYS = ['ml-task-map-v1', 'ml-remind-seen', 'ml-handled-v1'];
 
   function refreshSettingsForm() {
     var st = state.data.settings || Core.emptySettings();
@@ -1105,7 +1158,7 @@
       ? t('data.count', { n: events.length }) + (archived ? t('data.archivedN', { n: archived }) : '')
       : t('data.empty');
 
-    var meta = document.querySelector('meta[name="cd-version"]');
+    var meta = document.querySelector('meta[name="ml-version"]');
     var ver = meta ? (meta.getAttribute('content') || '') : '';
     $('#sAbout').textContent = t('about', {
       name: t('appName'),
@@ -1160,20 +1213,20 @@
 
   function openSettings() {
     refreshSettingsForm();
-    var layer = $('#cdSetLayer');
+    var layer = $('#mlSetLayer');
     clearTimeout(setTimer);
     layer.hidden = false;
     document.body.style.overflow = 'hidden';
     requestAnimationFrame(function () {
-      requestAnimationFrame(function () { document.body.classList.add('cd-open'); });
+      requestAnimationFrame(function () { document.body.classList.add('ml-open'); });
     });
   }
 
   function closeSettings() {
-    document.body.classList.remove('cd-open');
+    document.body.classList.remove('ml-open');
     document.body.style.overflow = '';
     clearTimeout(setTimer);
-    setTimer = setTimeout(function () { $('#cdSetLayer').hidden = true; }, 340);
+    setTimer = setTimeout(function () { $('#mlSetLayer').hidden = true; }, 340);
   }
 
   function updateSetting(key, value) {
@@ -1204,21 +1257,21 @@
     state.draft = ev ? JSON.parse(JSON.stringify(ev)) : newDraft(kindOfFilter(state.filter));
     fillSheet(state.draft, !!ev);
 
-    var layer = $('#cdLayer');
+    var layer = $('#mlLayer');
     clearTimeout(sheetTimer);
     layer.hidden = false;
     document.body.style.overflow = 'hidden';
     requestAnimationFrame(function () {
-      requestAnimationFrame(function () { document.body.classList.add('cd-open'); });
+      requestAnimationFrame(function () { document.body.classList.add('ml-open'); });
     });
   }
 
   function closeSheet() {
-    document.body.classList.remove('cd-open');
+    document.body.classList.remove('ml-open');
     document.body.style.overflow = '';
     clearTimeout(sheetTimer);
     sheetTimer = setTimeout(function () {
-      $('#cdLayer').hidden = true;
+      $('#mlLayer').hidden = true;
       state.editingId = null;
     }, 340);
   }
@@ -1258,7 +1311,7 @@
       d.preset = null;
       fp = null;
     }
-    var picked = document.querySelector('#fColors .cd-color[aria-pressed="true"]');
+    var picked = document.querySelector('#fColors .ml-color[aria-pressed="true"]');
     if (picked) d.color = picked.dataset.c;
 
     d.remind = formRemind();
@@ -1325,9 +1378,22 @@
     toast(t('toast.batch', { n: created.length }));
   }
 
+  /** 名称校验的成败反馈：红框 + 说明文字（说明文字由模板里的 data-i18n 提供） */
+  function markTitleInvalid(bad) {
+    var input = $('#fTitle');
+    var err = $('#fTitleErr');
+    if (!input) return;
+    if (bad) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+    if (err) err.hidden = !bad;
+    if (bad) {
+      try { input.focus(); } catch (e) { /* 聚焦失败不影响校验 */ }
+    }
+  }
+
   function saveSheet() {
     var editing = state.editingId;
-    // 新建 + 类型是节日 + 多选了预设 → 一次批量加入
+    // 新建 + 类型是节日 + 多选了预设 → 一次批量加入（名称由各自预设提供）
     var kind = segValue('#fKind') || 'countdown';
     var keys = (editing || kind !== 'festival') ? [] : selectedPresets();
     if (keys.length > 1) { saveBatch(keys); return; }
@@ -1335,10 +1401,9 @@
     var d = collect();
     delete d.presets;
 
-    if (!d.title) {
-      var pf = d.preset ? Core.festivalByKey(d.preset) : null;
-      d.title = pf ? pf.name : Core.KINDS[d.kind];
-    }
+    // 名称必填：空名称进列表只会看到一排「倒数日」，认不出是什么事
+    if (!d.title) { markTitleInvalid(true); return; }
+    markTitleInvalid(false);
     if (!d.date) { toast(t('toast.pickDate')); return; }
 
     var events = state.data.events;
@@ -1461,11 +1526,14 @@
           var code = payloadLang(payload);
           if (code) hostLangCode = code;
           if (langPref() !== 'auto') return;
-          applyLang('auto');
-          renderAll();
-          refreshSettingsForm();
+          // 设定值可能刚被写进 globalConfig，补读一次再定语言
+          primeHostLang().then(function () {
+            applyLang('auto');
+            renderAll();
+            refreshSettingsForm();
+          });
         });
-      } catch (e) { /* 旧版本宿主无此钩子 */ }
+      } catch (e) { /* 单个钩子注册失败不影响其它钩子 */ }
     }
 
     var key = P.Hooks.PERSISTED_DATA_CHANGED;
@@ -1490,35 +1558,35 @@
           } catch (e) { /* 忽略损坏数据 */ }
         });
       });
-    } catch (e) { /* 旧版本宿主不支持 */ }
+    } catch (e) { /* 宿主拒绝时静默跳过 */ }
   }
 
   /* ================= 事件绑定 ================= */
 
   function bind() {
-    $('#cdAdd').addEventListener('click', function () { openSheet(null); });
+    $('#mlAdd').addEventListener('click', function () { openSheet(null); });
 
-    $('#cdChips').addEventListener('click', function (e) {
-      var b = e.target.closest('.cd-chip');
+    $('#mlChips').addEventListener('click', function (e) {
+      var b = e.target.closest('.ml-chip');
       if (!b) return;
       state.filter = b.dataset.f;
       renderAll();
     });
 
-    $('#cdList').addEventListener('click', function (e) {
+    $('#mlList').addEventListener('click', function (e) {
       if (e.target.closest('[data-add]')) { openSheet(null); return; }
-      var item = e.target.closest('.cd-item');
+      var item = e.target.closest('.ml-item');
       if (item) openSheet(item.dataset.id);
     });
 
-    $('#cdList').addEventListener('keydown', function (e) {
+    $('#mlList').addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ') return;
-      var item = e.target.closest('.cd-item');
+      var item = e.target.closest('.ml-item');
       if (item) { e.preventDefault(); openSheet(item.dataset.id); }
     });
 
-    $('#cdHero').addEventListener('click', function (e) {
-      var h = e.target.closest('.cd-hero');
+    $('#mlHero').addEventListener('click', function (e) {
+      var h = e.target.closest('.ml-hero');
       if (h) openSheet(h.dataset.id);
     });
 
@@ -1533,12 +1601,12 @@
       refreshCalendarRow();
       // 新建时标题跟着类型走，编辑时保持「编辑事项」
       if (!state.editingId) {
-        $('#cdSheetTitle').textContent = t('sheet.new', { k: kindLower(b.dataset.v) });
+        $('#mlSheetTitle').textContent = t('sheet.new', { k: kindLower(b.dataset.v) });
       }
     });
 
     $('#fPresets').addEventListener('click', function (e) {
-      var b = e.target.closest('.cd-preset');
+      var b = e.target.closest('.ml-preset');
       if (!b) return;
       togglePreset(b.dataset.k || null);
     });
@@ -1566,7 +1634,7 @@
     $('#fLeap').addEventListener('change', function () { syncLunarControls(false); });
 
     $('#fColors').addEventListener('click', function (e) {
-      var b = e.target.closest('.cd-color');
+      var b = e.target.closest('.ml-color');
       if (!b) return;
       buildColors(b.dataset.c);
     });
@@ -1586,9 +1654,9 @@
       b.setAttribute('aria-pressed', on ? 'false' : 'true');
     });
 
-    $('#cdSettings').addEventListener('click', openSettings);
-    $('#cdSetClose').addEventListener('click', closeSettings);
-    $('#cdSetMask').addEventListener('click', closeSettings);
+    $('#mlSettings').addEventListener('click', openSettings);
+    $('#mlSetClose').addEventListener('click', closeSettings);
+    $('#mlSetMask').addEventListener('click', closeSettings);
     $('#sLang').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
@@ -1602,15 +1670,23 @@
       askClearData();
     });
 
-    $('#cdSave').addEventListener('click', saveSheet);
-    $('#cdCancel').addEventListener('click', closeSheet);
-    $('#cdMask').addEventListener('click', closeSheet);
-    $('#cdDelete').addEventListener('click', deleteEvent);
+    $('#mlSave').addEventListener('click', saveSheet);
+    $('#mlCancel').addEventListener('click', closeSheet);
+    $('#mlMask').addEventListener('click', closeSheet);
+    $('#mlDelete').addEventListener('click', deleteEvent);
+    // 一输入就撤掉红框，别让用户边填边看着报错
+    $('#fTitle').addEventListener('input', function () {
+      if ($('#fTitle').value.trim()) markTitleInvalid(false);
+    });
+    // 回车直接保存（键盘操作时不用再去点按钮）
+    $('#fTitle').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); saveSheet(); }
+    });
 
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
-      if (!$('#cdLayer').hidden) closeSheet();
-      else if (!$('#cdSetLayer').hidden) closeSettings();
+      if (!$('#mlLayer').hidden) closeSheet();
+      else if (!$('#mlSetLayer').hidden) closeSettings();
     });
   }
 
@@ -1623,25 +1699,24 @@
     bind();
     load();
     registerHooks();
+    // 「跟随系统」时 getCurrentLanguage() 只会给默认值 en，补读真实设定值再定一次语言
+    primeHostLang().then(function (changed) {
+      if (!changed || langPref() !== 'auto') return;
+      applyLang('auto');
+      renderAll();
+      refreshSettingsForm();
+    });
     // 主题改为「宿主属性变化即触发 + 8 秒兜底」，不再每 3 秒强制读一次计算样式
     watchTheme();
   }
 
-  var tries = 0;
-  function boot() {
-    if (!window.PluginAPI && tries < 40) {
-      tries++;
-      setTimeout(boot, 50);
-      return;
-    }
-    init();
-  }
-
   window.addEventListener('pagehide', teardown);
 
+  // 宿主把 window.PluginAPI 注入在插件脚本之前，加载完即可直接用；
+  // 直接打开 dist/index.html 调试时没有它，Store 会自动走 localStorage。
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    boot();
+    init();
   }
 })();

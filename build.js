@@ -104,6 +104,57 @@ function assertParses(code, label) {
   }
 }
 
+/* ---------------- 剥离 Node 专用代码 ----------------
+ * 各模块的 UMD 包装里有一段「Node 分支」（node-only 标记之间），只是为了让
+ * test/*.js 能 require 到源码。插件运行时是浏览器环境，这段永远走不到；
+ * 但它带着 require('fs') 这种字面量，宿主的静态检查会据此告警：
+ *   plugin-security.ts: /require\s*\(\s*['"`](fs|child_process)/
+ *   → "Attempts to use Node.js APIs without permission - will fail"
+ * 所以构建时按标记整段删掉，产物里不留任何 Node 痕迹。
+ */
+const NODE_ONLY_START = /^\s*\/\*\s*node-only:start\b/;
+const NODE_ONLY_END = /^\s*\/\*\s*node-only:end\b/;
+
+function stripNodeOnly(code, label) {
+  const out = [];
+  let skip = false;
+  code.split('\n').forEach((line) => {
+    if (NODE_ONLY_START.test(line)) {
+      if (skip) throw new Error(label + ' 的 node-only 标记嵌套，无法剥离');
+      skip = true;
+      return;
+    }
+    if (NODE_ONLY_END.test(line)) {
+      if (!skip) throw new Error(label + ' 的 node-only:end 没有对应的 start');
+      skip = false;
+      return;
+    }
+    if (!skip) out.push(line);
+  });
+  if (skip) throw new Error(label + ' 的 node-only:start 未闭合');
+  return out.join('\n');
+}
+
+/** 产物闸门：浏览器包里不允许出现 Node 专有 API（宿主会告警，运行时也必然失败） */
+const NODE_API_HINTS = [
+  [/\brequire\s*\(/, 'require()'],
+  [/\bmodule\s*\.\s*exports\b/, 'module.exports'],
+  [/\bexports\s*\.\s*[A-Za-z_$]/, 'exports.xxx'],
+  [/\b__dirname\b/, '__dirname'],
+  [/\b__filename\b/, '__filename'],
+  [/\bprocess\s*\.\s*[A-Za-z_$]/, 'process.xxx'],
+  [/\bBuffer\s*\.\s*(?:from|alloc)\b/, 'Buffer.from/alloc']
+];
+
+function assertNoNodeApis(code, label) {
+  const hits = NODE_API_HINTS.filter(([re]) => re.test(code)).map(([, name]) => name);
+  if (hits.length) {
+    throw new Error(label + ' 含 Node 专有 API（' + hits.join('、') +
+      '），宿主会报 "Attempts to use Node.js APIs without permission" 并且跑不起来；' +
+      '这类代码请放进 node-only 标记段');
+  }
+}
+
 /** 内联段之间的来源横幅：产物里一眼看出这段来自哪个源文件，排查时不用回头翻构建脚本 */
 const banner = (file) => '/* ===== ' + file + ' ===== */\n';
 
@@ -115,7 +166,7 @@ const localeScript = () => banner('src/locales/*.js（构建时合成）') +
   'self.I18N_DATA = ' + JSON.stringify(localePayload(), null, 2) + ';\n';
 
 const jsBundle = (files) => files
-  .map((f) => banner('src/' + f) + read(f))
+  .map((f) => banner('src/' + f) + stripNodeOnly(read(f), 'src/' + f))
   .join('\n\n');
 
 const cssBundle = (file) => banner('src/' + file) + read(file);
@@ -129,13 +180,14 @@ function buildIndexHtml() {
   const css = cssBundle('styles.css');
   const js = localeScript() + jsBundle(['i18n.js', 'lunar.js', 'event-core.js', 'app.js']);
   assertParses(js, 'index.html 内联脚本');
+  assertNoNodeApis(js, 'index.html 内联脚本');
 
   const html = tpl
     .replace('/*INJECT_STYLES*/', () => css.trim())
     .replace('/*INJECT_SCRIPTS*/', () => js.trim())
-    .replace(/__CD_VERSION__/g, ver)
+    .replace(/__ML_VERSION__/g, ver)
     // 初始 <title> 用清单显示名：脚本跑起来后会按语言重设，这里只保证首帧不是占位符
-    .replace(/__CD_NAME__/g, () => escapeHtml(manifest.name));
+    .replace(/__ML_NAME__/g, () => escapeHtml(manifest.name));
 
   if (!html.includes('window.Lunar') && !html.includes('global.Lunar')) {
     throw new Error('index.html 未包含农历模块');
@@ -167,6 +219,7 @@ function buildPluginJs() {
   const code = localeScript() + jsBundle(
     ['i18n.js', 'lunar.js', 'event-core.js', 'reminder-tasks.js', 'plugin-main.js']);
   assertParses(code, 'plugin.js');
+  assertNoNodeApis(code, 'plugin.js');
   const out = head + code;
   const bytes = Buffer.byteLength(out, 'utf8');
   if (bytes > SIZE_WARN) {
@@ -250,15 +303,15 @@ function makeZip(files, when) {
     offset += lh.length + nameBuf.length + body.length;
   }
 
-  const cdBuf = Buffer.concat(centrals);
+  const mlBuf = Buffer.concat(centrals);
   const eocd = Buffer.alloc(22);
   eocd.writeUInt32LE(0x06054b50, 0);
   eocd.writeUInt16LE(files.length, 8);
   eocd.writeUInt16LE(files.length, 10);
-  eocd.writeUInt32LE(cdBuf.length, 12);
+  eocd.writeUInt32LE(mlBuf.length, 12);
   eocd.writeUInt32LE(offset, 16);
 
-  return Buffer.concat([...locals, cdBuf, eocd]);
+  return Buffer.concat([...locals, mlBuf, eocd]);
 }
 
 /* ---------------- 主流程 ---------------- */

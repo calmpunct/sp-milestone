@@ -3,11 +3,13 @@
  * 依赖 Lunar（农历换算）与 I18N（文案表）
  */
 (function (global, factory) {
+  /* node-only:start （仅供 test/*.js require，构建时剥离）*/
   if (typeof module === 'object' && typeof module.exports === 'object') {
     module.exports = factory(require('./lunar.js'), require('./i18n.js'));
-  } else {
-    global.EventCore = factory(global.Lunar, global.I18N);
+    return;
   }
+  /* node-only:end */
+  global.EventCore = factory(global.Lunar, global.I18N);
 })(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : this, function (Lunar, I18N) {
   'use strict';
 
@@ -175,6 +177,13 @@
   var REMIND_OFFSETS = [0, 1, 3, 7, 30];
 
   /**
+   * 提醒任务统一打这个标签，任务本身落在收件箱（不再建「里程碑提醒」项目）。
+   * 固定英文常量、**不进语言包**：标签名是宿主机里的实体标识，跟着界面语言变会让同一份数据
+   * 在不同语言下建出两个标签（历史教训：项目名 taskProject 就是随语言变的）。
+   */
+  var TAG_DEFAULT = 'milestone';
+
+  /**
    * 提醒渠道是「每个事项各自选择」的，不是一个全局总开关：
    *   task  = true → 在任务列表里生成一条任务（关闭即删除该任务）
    *   snack = true → 打开应用时若到点，弹一条提示条
@@ -186,8 +195,8 @@
 
   function emptySettings() {
     return {
-      // 任务归属的项目名（默认名跟随界面语言，之后按用户实际数据走）
-      taskProject: I.t('projectDefault'),
+      // 提醒任务的标签名：任务落收件箱，靠这个标签归类（不存在时插件自动创建）
+      taskTag: TAG_DEFAULT,
       // 顶部是否放大显示当前分区的第一条
       hero: true,
       // 语言偏好：auto 跟随系统，或强制 zh / en
@@ -196,18 +205,19 @@
   }
 
   function emptyData() {
-    return { version: 6, events: [], settings: emptySettings() };
+    return { version: 1, events: [], settings: emptySettings() };
   }
 
-  /** 规范化外部数据，容错处理历史/损坏数据 */
+  /** 规范化外部数据：同步数据可能被截断或塞进坏值，逐字段校正 */
   function normalize(raw) {
     var data = emptyData();
     if (!raw || typeof raw !== 'object') return data;
 
     if (raw.settings && typeof raw.settings === 'object') {
       var s = raw.settings;
-      if (typeof s.taskProject === 'string' && s.taskProject.trim()) {
-        data.settings.taskProject = s.taskProject.trim().slice(0, 40);
+      // 标签名（老数据里的 taskProject 不再读取：项目 → 收件箱 + 标签）
+      if (typeof s.taskTag === 'string' && s.taskTag.trim()) {
+        data.settings.taskTag = s.taskTag.trim().slice(0, 40);
       }
       data.settings.hero = s.hero !== false;
       // 语言：只认 auto / zh / en，其余一律回到 auto（跟随系统）
@@ -700,6 +710,7 @@
     WEEK: WEEK,
     DAY_MS: DAY_MS,
     REMIND_OFFSETS: REMIND_OFFSETS,
+    TAG_DEFAULT: TAG_DEFAULT,
     FESTIVALS: FESTIVALS,
     FESTIVAL_GROUPS: FESTIVAL_GROUPS,
     TERMS: TERMS,

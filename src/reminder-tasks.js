@@ -11,22 +11,21 @@
  * 不需要删除时特意记账，也不会出现「删了提醒但任务还在」。
  */
 (function (global, factory) {
+  /* node-only:start （仅供 test/*.js require，构建时剥离）*/
   if (typeof module === 'object' && typeof module.exports === 'object') {
     module.exports = factory(require('./event-core.js'), require('./i18n.js'));
-  } else {
-    global.ReminderTasks = factory(global.EventCore, global.I18N);
+    return;
   }
+  /* node-only:end */
+  global.ReminderTasks = factory(global.EventCore, global.I18N);
 })(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : this, function (Core, I18N) {
   'use strict';
 
   var I = I18N;
 
-  // 项目名是数据（settings.taskProject），这里只留一个旧常量供兼容读取
-  var PROJECT_TITLE = I.t('projectDefault');
-
   // 备注里的机器标记，用于跨设备识别「这条任务是谁生成的」
-  // 形如：cd:ev=e1;cy=2026-05-14   （cy = 本轮事件发生的公历日期）
-  var MARK_RE = /cd:ev=([A-Za-z0-9_\-:]+);cy=(\d{4}-\d{2}-\d{2})/;
+  // 形如：ml:ev=e1;cy=2026-05-14   （cy = 本轮事件发生的公历日期）
+  var MARK_RE = /ml:ev=([A-Za-z0-9_\-:]+);cy=(\d{4}-\d{2}-\d{2})/;
 
   var ICONS = { birthday: '🎂', anniversary: '🎉', countdown: '⏳', festival: '🎊' };
 
@@ -37,7 +36,7 @@
 
   /** 生成备注里的标记行 */
   function markLine(eventId, cycle) {
-    return 'cd:ev=' + eventId + ';cy=' + cycle;
+    return 'ml:ev=' + eventId + ';cy=' + cycle;
   }
 
   /** 从备注解析标记；不是本插件管理的任务返回 null */
@@ -225,7 +224,6 @@
   }
 
   return {
-    PROJECT_TITLE: PROJECT_TITLE,
     offsetText: offsetText,
     markLine: markLine,
     parseMark: parseMark,
