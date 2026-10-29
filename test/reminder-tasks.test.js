@@ -18,7 +18,7 @@ function mk(o) {
   return Object.assign({
     id: 'x', title: 't', kind: 'birthday', calendar: 'solar',
     date: '1971-05-14', lunar: null, repeat: true, color: '#e8590c', note: '', pinned: false,
-    remind: { task: true, snack: false, offsets: [0, 1, 3] }
+    remind: { task: true, offsets: [0, 1, 3] }
   }, o);
 }
 
@@ -41,12 +41,12 @@ eq(d1.cycle, '2027-05-14', '周期记的是事件发生日');
 ok(d1.notes.includes('ml:ev=e1;cy=2027-05-14'), '备注带机器标记');
 ok(d1.notes.includes('提前 3 天提醒'), '备注写清档位');
 
-const ann = mk({ id: 'e2', kind: 'anniversary', title: '结婚纪念日', date: '2018-06-16', remind: { task: true, snack: false, offsets: [7, 30] } });
+const ann = mk({ id: 'e2', kind: 'anniversary', title: '结婚纪念日', date: '2018-06-16', remind: { task: true, offsets: [7, 30] } });
 const d2 = RT.desiredTask(ann, TODAY);
 eq(d2.title, '🎉 结婚纪念日', '纪念日图标，不加年龄');
 eq(d2.dueDay, '2027-05-17', '提前 30 天（更早的档位）');
 
-const cd = mk({ id: 'e3', kind: 'countdown', title: '项目上线', date: '2026-12-01', repeat: false, remind: { task: true, snack: false, offsets: [0, 1, 3, 7] } });
+const cd = mk({ id: 'e3', kind: 'countdown', title: '项目上线', date: '2026-12-01', repeat: false, remind: { task: true, offsets: [0, 1, 3, 7] } });
 const d3 = RT.desiredTask(cd, TODAY);
 eq(d3.title, '⏳ 项目上线', '倒数日图标');
 eq(d3.dueDay, '2026-11-24', '一次性倒数日按提前 7 天');
@@ -62,17 +62,17 @@ eq(RT.nextSlot(mom, D(2027, 5, 13)).offset, 1, '明天过生日 → 提前 1 天
 eq(RT.nextSlot(mom, D(2027, 5, 14)).offset, 0, '生日当天');
 
 // 全部档位都过期（今天就是正日子，但只配了提前 3 天）→ 回落到最小的逾期档位
-const late = RT.nextSlot(mk({ id: 'e9', remind: { task: true, snack: false, offsets: [3] } }), D(2027, 5, 14));
+const late = RT.nextSlot(mk({ id: 'e9', remind: { task: true, offsets: [3] } }), D(2027, 5, 14));
 eq(late.offset, 3, '档位全过期时保留逾期任务');
 eq(Core.ymd(late.date), '2027-05-11', '逾期任务的到期日仍是原提醒日');
 
 // 一次性事件过期后不再有任务
 eq(RT.nextSlot(cd, D(2026, 12, 2)), null, '一次性事件过后没有任务');
-// 只开提示条渠道时没有任务（任务列表这一侧是关的）
-eq(RT.nextSlot(mk({ remind: { task: false, snack: true, offsets: [0] } }), TODAY), null, '只开提示条不产生任务');
+// 关掉提醒开关时没有任务
+eq(RT.nextSlot(mk({ remind: { task: false, offsets: [0] } }), TODAY), null, '关掉提醒不产生任务');
 // 归档的日子不产生任务（归档 = 静音）
 eq(RT.nextSlot(mk({ archived: true }), TODAY), null, '归档的日子不产生任务');
-eq(RT.desiredTask(mk({ archived: true, remind: { task: true, snack: true, offsets: [0, 1] } }), TODAY), null, '归档优先于渠道开关');
+eq(RT.desiredTask(mk({ archived: true, remind: { task: true, offsets: [0, 1] } }), TODAY), null, '归档优先于提醒开关');
 
 /* ---------------- 3. 对账 ---------------- */
 
@@ -98,7 +98,7 @@ const moved = mk({ id: 'e1', title: '妈妈生日', date: '1971-05-20' });
 p = RT.plan({ events: [moved], existing: existing, today: TODAY });
 eq(p.update[0].patch.dueDay, '2027-05-17', '改日期后到期日跟着变');
 
-const remindChanged = mk({ id: 'e1', title: '妈妈生日', remind: { task: true, snack: false, offsets: [0, 30] } });
+const remindChanged = mk({ id: 'e1', title: '妈妈生日', remind: { task: true, offsets: [0, 30] } });
 p = RT.plan({ events: [remindChanged], existing: existing, today: TODAY });
 eq(p.update[0].patch.dueDay, '2027-04-14', '改档位后到期日跟着变（提前 30 天）');
 
@@ -107,8 +107,8 @@ p = RT.plan({ events: [], existing: existing, today: TODAY });
 eq(p.remove.length, 1, '事件删除 → 任务删除');
 eq(p.remove[0].reason, 'orphan', '判定为孤儿');
 
-p = RT.plan({ events: [mk({ id: 'e1', title: '妈妈生日', remind: { task: false, snack: true, offsets: [0, 1, 3] } })], existing: existing, today: TODAY });
-eq(p.remove.length, 1, '关掉任务列表（只留提示条）→ 任务删除');
+p = RT.plan({ events: [mk({ id: 'e1', title: '妈妈生日', remind: { task: false, offsets: [0, 1, 3] } })], existing: existing, today: TODAY });
+eq(p.remove.length, 1, '关掉提醒开关 → 任务删除');
 
 p = RT.plan({ events: [mk({ id: 'e1', title: '妈妈生日', archived: true })], existing: existing, today: TODAY });
 eq(p.remove.length, 1, '归档 → 任务删除');
@@ -157,8 +157,8 @@ eq(RT.parseMark('前缀\nml:ev=a:b;cy=2026-01-02\n后缀').eventId, 'a:b', '备�
 
 console.log('[9] 边界');
 eq(RT.plan({ events: [], existing: [], today: TODAY }).add.length, 0, '空数据不产生任务');
-eq(RT.desiredTask(mk({ remind: { task: true, snack: false, offsets: [] } }), TODAY), null, '没有档位不产生任务');
-eq(RT.desiredTask(mk({ remind: { task: true, snack: false, offsets: [99] } }), TODAY), null, '非法档位不产生任务');
+eq(RT.desiredTask(mk({ remind: { task: true, offsets: [] } }), TODAY), null, '没有档位不产生任务');
+eq(RT.desiredTask(mk({ remind: { task: true, offsets: [99] } }), TODAY), null, '非法档位不产生任务');
 
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

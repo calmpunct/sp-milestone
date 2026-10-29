@@ -1096,7 +1096,6 @@
     var rm = Core.normalizeRemind(ev.remind);
     var chans = [];
     if (rm.task) chans.push(t('detail.remindTask'));
-    if (rm.snack) chans.push(t('detail.remindSnack'));
     var days = rm.offsets.map(function (d) { return t('offset.' + d); });
     return t('detail.remindLine', {
       ch: chans.join(langListSep()),
@@ -1424,8 +1423,7 @@
   function renderRemind(remind) {
     var rm = remind || Core.defaultRemind();
     $('#fTask').checked = rm.task !== false;
-    $('#fSnack').checked = rm.snack === true;
-    $('#fOffsets').hidden = !(rm.task || rm.snack);
+    $('#fOffsets').hidden = rm.task === false;
     var list = rm.offsets || [];
     Array.prototype.forEach.call(document.querySelectorAll('#fOffsets button'), function (b) {
       b.setAttribute('aria-pressed', String(list.indexOf(+b.dataset.d) !== -1));
@@ -1747,7 +1745,6 @@
     var el = $('#fRemindHint');
     if (!el) return;
     var taskOn = !!($('#fTask') && $('#fTask').checked);
-    var snackOn = !!($('#fSnack') && $('#fSnack').checked);
     var archived = !!($('#fArchived') && $('#fArchived').checked);
     var tag = (state.data.settings || Core.emptySettings()).taskTag;
 
@@ -1756,15 +1753,9 @@
       el.textContent = t('remind.hintArchived');
       return;
     }
-    if (taskOn && snackOn) {
-      el.className = 'ml-hint';
-      el.textContent = t('remind.hintBoth', { t: tag });
-    } else if (taskOn) {
+    if (taskOn) {
       el.className = 'ml-hint';
       el.textContent = t('remind.hintTask', { t: tag });
-    } else if (snackOn) {
-      el.className = 'ml-hint';
-      el.textContent = t('remind.hintSnack');
     } else {
       el.className = 'ml-hint warn';
       el.textContent = t('remind.hintNone');
@@ -1775,8 +1766,8 @@
 
   var setTimer = null;
 
-  // 本机缓存键，与 plugin-main.js 里的 SEEN_KEY / MAP_KEY / DONE_KEY 保持一致
-  var HOST_KEYS = ['ml-task-map-v1', 'ml-remind-seen', 'ml-handled-v1'];
+  // 本机缓存键，与 plugin-main.js 里的 MAP_KEY / DONE_KEY 保持一致
+  var HOST_KEYS = ['ml-task-map-v1', 'ml-handled-v1'];
 
   function refreshSettingsForm() {
     var st = state.data.settings || Core.emptySettings();
@@ -1928,12 +1919,9 @@
       document.querySelectorAll('#fOffsets button[aria-pressed="true"]')
     ).map(function (b) { return +b.dataset.d; });
     offs.sort(function (a, b) { return a - b; });
-    // 两个渠道各自独立；选了渠道但没勾天数时，默认按当天提醒
-    var taskOn = $('#fTask').checked;
-    var snackOn = $('#fSnack').checked;
+    // 开了提醒但没勾天数时，默认按当天提醒
     return {
-      task: taskOn,
-      snack: snackOn,
+      task: $('#fTask').checked,
       offsets: offs.length ? offs : [0]
     };
   }
@@ -2010,7 +1998,6 @@
         note: note,
         remind: {
           task: remind.task,
-          snack: remind.snack,
           offsets: remind.offsets.slice()
         },
         archived: archived,
@@ -2305,11 +2292,10 @@
     });
 
     function syncOffsets() {
-      $('#fOffsets').hidden = !($('#fTask').checked || $('#fSnack').checked);
+      $('#fOffsets').hidden = !$('#fTask').checked;
       refreshRemindHint();
     }
     $('#fTask').addEventListener('change', syncOffsets);
-    $('#fSnack').addEventListener('change', syncOffsets);
     $('#fArchived').addEventListener('change', refreshRemindHint);
 
     $('#fOffsets').addEventListener('click', function (e) {

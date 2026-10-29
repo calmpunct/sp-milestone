@@ -55,7 +55,6 @@ const dom = new JSDOM(html, {
       showIndexHtmlAsView() {},
       loadSyncedData() { return Promise.resolve(window.__STORE__); },
       persistDataSynced(s) { window.__STORE__ = s; return Promise.resolve(); },
-      showSnack() {},
       openDialog() { return Promise.resolve('取消'); }
     };
   }
@@ -229,7 +228,6 @@ async function runEdge() {
         showIndexHtmlAsView() {},
         loadSyncedData() { return Promise.resolve(JSON.stringify(SEED2)); },
         persistDataSynced() { return Promise.resolve(); },
-        showSnack() {},
         openDialog() { return Promise.resolve('取消'); }
       };
     }

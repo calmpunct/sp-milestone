@@ -95,11 +95,6 @@
     'offset.30': "提前 30 天",
     'remind.line': "{off}提醒 · 应处理日 {date}",
     'remind.yearly': "每年",
-    'snack.today': "今天",
-    'snack.tomorrow': "明天",
-    'snack.inDays': "{n} 天后",
-    'snack.more': "等 {n} 个事项",
-    'snack.sep': "｜",
 
     /* ---------------- 界面骨架 ---------------- */
     loading: "正在加载…",
@@ -205,8 +200,7 @@
     'detail.remindOff': "不提醒",
     'detail.remindArchived': "已归档，不再提醒",
     'detail.remindLine': "{days} · {ch}",
-    'detail.remindTask': "加入任务列表",
-    'detail.remindSnack': "打开应用时提示",
+    'detail.remindTask': "任务列表",
     'repeat.on': "每年重复",
     'repeat.off': "不重复",
 
@@ -243,8 +237,7 @@
     'form.repeat': "过期后重新开始倒数",
     'form.repeatHint': "打开：到期后滚到明年的同一天继续倒数。关掉：停在「已过天数」。",
     'form.remind': "提醒",
-    'form.remindTask': "加入任务列表",
-    'form.remindSnack': "打开应用时弹提示条",
+    'form.remindTask': "在任务列表提醒我",
     'form.archive': "归档",
     'form.archiveMove': "移到归档分组",
     'form.color': "颜色",
@@ -271,10 +264,8 @@
 
     /* ---------------- 提醒说明 ---------------- */
     'remind.hintArchived': "已归档：不在「全部」里显示，也不会提醒，任务列表里的对应任务会被删除。",
-    'remind.hintBoth': "到期在收件箱生成任务，并打上「{t}」标签；打开应用时还会弹提示条。",
     'remind.hintTask': "到期在收件箱生成一条任务，打上「{t}」标签，随应用同步；关掉即删除。",
-    'remind.hintSnack': "只在打开应用时弹提示条；插件没有后台推送，应用没开就不提示。",
-    'remind.hintNone': "该事项不会提醒你（两个渠道都关着）。",
+    'remind.hintNone': "该事项不会提醒你。",
 
     /* ---------------- 设置面板 ---------------- */
     'set.hero': "置顶卡片",

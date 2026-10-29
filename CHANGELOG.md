@@ -6,6 +6,25 @@
 
 版本从 `1.0.0` 起算。更早的 2.x 序列都是未发布的内部迭代，版本号偏大，已整体重排为 0.x 预发布序列。
 
+## 1.3.0
+
+> 删掉第二条提醒通道（提示条）。插件未发布，不需要兼容层：数据模型、界面、宿主逻辑、语言包、测试里与 `snack` 相关的代码**全部移除**，一处不留。
+
+### 移除
+- **「打开应用时弹提示条」整条通道下线**：`PluginAPI.showSnack` 弹的是底部临时条，几秒自动消失，既不留记录也不进通知中心 —— 点开应用时人往往在干别的，弹一下就走等于没提醒；宿主又没有系统级推送（`notify` 还需要额外权限与各平台验证），所以这条通道留着只会误导。现在每个事项只有一个「在任务列表提醒我」开关，语义单一，用户不用再猜两个开关有什么区别
+- **数据模型去掉 `remind.snack`**：`defaultRemind()` 与 `normalizeRemind()` 只认 `{ task, offsets }`；`normalize()` 按白名单重建对象，旧数据里残留的 `snack` 在第一次读取时就被丢掉，不会再写回
+- **`Core.dueReminders()` 与 `hasReminder` 的双通道判断一起删掉**：前者是提示条专属的取样函数（含上一版刚加的补发逻辑），整个导出移除；后者改为只看 `remind.task` —— 关掉提醒就不显示铃铛，跟任务实际存不存在保持同一判断
+- **宿主侧清理**：`SEEN_KEY`（`ml-remind-seen`）、`KEEP_DAYS`、`readSeen/writeSeen/pruneSeen`、`whenText`、`runSnack`、`scheduleSnackCheck`、`snackTimer`、`snackWarned`、`SNACK_DELAY` 与 `warn()` 全部删除；`tick()` 回到「只做任务对账」，`boot()` 不再弹任何东西，`persistedDataChanged` 也不再触发提示条检查
+- **界面清理**：表单里 `#fSnack` 开关行删除，「提前天数」的显隐只跟随 `#fTask`；`refreshRemindHint()` 的两个组合分支（都开 / 只开提示条）合并成「开 / 关」两支；详情页的渠道描述不再拼接「打开应用时提示」；批量添加节日时不再复制 `snack`
+- **语言包清理**：`snack.today / snack.tomorrow / snack.inDays / snack.more / snack.sep`、`form.remindSnack`、`detail.remindSnack`、`remind.hintBoth`、`remind.hintSnack` 中英双语一并删除；`remind.hintNone` 去掉「两个渠道都关着」的说法，`form.remindTask` 改成「在任务列表提醒我」（英文 `Remind me in the task list`），`detail.remindTask` 统一成「任务列表」
+- **本机缓存清理**：`app.js` 的 `HOST_KEYS` 去掉 `ml-remind-seen`，清空数据时不再删一个已经不存在的键
+
+### 测试
+- `core.test.js`：`[8]` 从「两个渠道」改为「提醒设置」——铃铛随开关、归档静音、只有档位时按默认开，并断言 `defaultRemind()` / `normalizeRemind()` 里没有 `snack`、`Core.dueReminders` 已不存在
+- `reminder.test.js`：删掉提示条相关小节的全部用例（`[10] 提示条按每个事项的开关`、`[11]` 里的降级断言等），`snacks` 计数桩一并移除，小节重新编号为 1–12
+- `dom.test.js`：`[8]` 改为只测单一开关（默认开→关掉隐藏天数并提示「不会提醒」→重新打开→只留提前 7 天），并断言表单里没有 `#fSnack`、保存后数据里没有 `snack` 字段
+- 全量 `npm test` 通过（农历 73384 天往返、DOM、静态资源、构建产物全部绿）
+
 ## 1.2.0
 
 > 本轮把版本从 `1.1.1` 推到 `1.2.0`：多了「秒级计时」这个新功能，属于新增能力走次版本号。安装包名随之变成 `sp-milestone-v1.2.0.zip`。

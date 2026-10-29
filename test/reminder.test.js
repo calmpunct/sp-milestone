@@ -1,5 +1,5 @@
 /**
- * 宿主侧测试：任务列表投影 + 可选提示条
+ * 宿主侧测试：任务列表投影
  * 直接加载 dist/plugin.js，用内存任务表模拟宿主 API。
  *   node test/reminder.test.js
  */
@@ -28,7 +28,7 @@ function ev(o) {
     id: 'x' + Math.random().toString(36).slice(2, 7),
     title: 'T', kind: 'countdown', calendar: 'solar',
     date: inDays(10), lunar: null, repeat: false, color: '#e8590c',
-    note: '', pinned: false, remind: { task: true, snack: false, offsets: [0] }
+    note: '', pinned: false, remind: { task: true, offsets: [0] }
   }, o);
 }
 
@@ -53,7 +53,6 @@ function boot(store, opts) {
     url: 'https://localhost/'
   });
   const w = dom.window;
-  const snacks = [];
   const regs = { sidePanel: 0, menu: 0, sideLabel: '', menuLabel: '' };
   const calls = [];
 
@@ -73,7 +72,6 @@ function boot(store, opts) {
     registerSidePanelButton(cfg) { regs.sidePanel++; regs.sideLabel = cfg && cfg.label; },
     registerMenuEntry(cfg) { regs.menu++; regs.menuLabel = cfg && cfg.label; },
     showIndexHtmlAsView() {},
-    showSnack(cfg) { snacks.push(cfg.msg); },
     loadSyncedData() { return Promise.resolve(JSON.stringify(store)); },
     persistDataSynced() { return Promise.resolve(); },
     log: { warn() {}, info() {}, err() {}, error() {}, log() {} },
@@ -129,7 +127,7 @@ function boot(store, opts) {
 
   runPlugin(w, api, pluginJs);
 
-  return { w, api, host, snacks, regs, calls, dom };
+  return { w, api, host, regs, calls, dom };
 }
 
 /**
@@ -173,13 +171,12 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     await wait(60);
     eq(run.regs.menu, 1, '切语言不重复注册（否则导航会多一个入口）');
     eq(run.regs.menuLabel, 'Milestone', '切语言后入口名照旧');
-    eq(run.snacks.length, 0, '不弹「重启改入口名」的提示条：' + JSON.stringify(run.snacks));
   }
 
   console.log('[2] 首次同步写入任务');
   {
     const e = ev({ id: 'b1', title: '妈妈生日', kind: 'birthday', date: '1971-05-14', repeat: true,
-      remind: { task: true, snack: false, offsets: [0, 3] } });
+      remind: { task: true, offsets: [0, 3] } });
     const { host, calls } = boot(data([e]));
     await wait(150);
     const rows = taskList(host);
@@ -200,7 +197,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
   console.log('[3] 改名只更新不新增');
   {
     const e1 = ev({ id: 'b2', title: '小米生日', kind: 'birthday', date: '2019-11-08', repeat: true,
-      remind: { task: true, snack: false, offsets: [0] } });
+      remind: { task: true, offsets: [0] } });
     const first = boot(data([e1]));
     await wait(150);
     eq(taskList(first.host).length, 1, '先有 1 条');
@@ -267,7 +264,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
 
   console.log('[4] 删除事项 → 任务消失');
   {
-    const e = ev({ id: 'c1', title: '项目上线', date: inDays(20), remind: { task: true, snack: false, offsets: [3] } });
+    const e = ev({ id: 'c1', title: '项目上线', date: inDays(20), remind: { task: true, offsets: [3] } });
     const first = boot(data([e]));
     await wait(150);
     eq(taskList(first.host).length, 1, '先有 1 条');
@@ -283,12 +280,12 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
 
   console.log('[5] 关闭该事项的提醒 → 任务消失');
   {
-    const on = ev({ id: 'd1', title: '入职纪念', date: inDays(30), remind: { task: true, snack: false, offsets: [3] } });
+    const on = ev({ id: 'd1', title: '入职纪念', date: inDays(30), remind: { task: true, offsets: [3] } });
     const first = boot(data([on]));
     await wait(150);
     eq(taskList(first.host).length, 1, '先有 1 条');
 
-    const off = Object.assign({}, on, { remind: { task: false, snack: false, offsets: [3] } });
+    const off = Object.assign({}, on, { remind: { task: false, offsets: [3] } });
     const second = boot(data([off]), {
       host: first.host,
       reuse: { 'ml-task-map-v1': first.w.localStorage.getItem('ml-task-map-v1') || '{}' }
@@ -297,10 +294,10 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     eq(taskList(second.host).length, 0, '关闭提醒后任务被删除');
   }
 
-  console.log('[6] 归档 / 只开提示条 → 任务消失');
+  console.log('[6] 归档 / 关掉提醒 → 任务消失');
   {
     const e = ev({ id: 'e1', title: '结婚纪念日', kind: 'anniversary', date: '2018-06-16', repeat: true,
-      remind: { task: true, snack: false, offsets: [7] } });
+      remind: { task: true, offsets: [7] } });
     const first = boot(data([e]));
     await wait(150);
     eq(taskList(first.host).length, 1, '先有 1 条');
@@ -313,17 +310,17 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     await wait(150);
     eq(taskList(second.host).length, 0, '归档后任务被删除');
 
-    // 只留提示条渠道：同样不建任务
-    const third = boot(data([Object.assign({}, e, { remind: { task: false, snack: true, offsets: [7] } })]), {
+    // 关掉提醒开关：同样不建任务
+    const third = boot(data([Object.assign({}, e, { remind: { task: false, offsets: [7] } })]), {
       host: first.host, reuse: { 'ml-task-map-v1': map }
     });
     await wait(150);
-    eq(taskList(third.host).length, 0, '关掉任务列表后任务被删除');
+    eq(taskList(third.host).length, 0, '关掉提醒后任务被删除');
   }
 
   console.log('[7] 任务被外部删除 → 自动重建');
   {
-    const e = ev({ id: 'f1', title: '考试', date: inDays(15), remind: { task: true, snack: false, offsets: [3] } });
+    const e = ev({ id: 'f1', title: '考试', date: inDays(15), remind: { task: true, offsets: [3] } });
     const first = boot(data([e]));
     await wait(150);
     eq(taskList(first.host).length, 1, '先有 1 条');
@@ -338,7 +335,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
 
   console.log('[8] 本轮已完成 → 不复活');
   {
-    const e = ev({ id: 'g1', title: '体检', date: inDays(5), remind: { task: true, snack: false, offsets: [0, 1] } });
+    const e = ev({ id: 'g1', title: '体检', date: inDays(5), remind: { task: true, offsets: [0, 1] } });
     const first = boot(data([e]));
     await wait(150);
     eq(taskList(first.host).length, 1, '先有 1 条');
@@ -355,7 +352,7 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
   console.log('[9] 另一台设备同步来的任务不重复创建');
   {
     const e = ev({ id: 'h1', title: '生日会', kind: 'birthday', date: '2000-03-08', repeat: true,
-      remind: { task: true, snack: false, offsets: [1] } });
+      remind: { task: true, offsets: [1] } });
     const norm = Core.normalize({ events: [e] }).events[0];
     const d = RT.desiredTask(norm, new Date());
     const { host, calls } = boot(data([e]), {
@@ -372,51 +369,17 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     ok(!calls.some((c) => c.op === 'add'), '没有新建');
   }
 
-  console.log('[10] 提示条按每个事项的开关');
+  console.log('[10] 宿主未提供任务 API 也不崩溃');
   {
-    const mk = (remind, archived) => {
-      const e = ev({ id: 'i1', title: '甲', date: inDays(0), remind: remind });
-      if (archived) e.archived = true;
-      return e;
-    };
-
-    const taskOnly = boot(data([mk({ task: true, snack: false, offsets: [0] })]));
+    const e = ev({ id: 'j1', title: '旧版本', date: inDays(0), remind: { task: true, offsets: [0] } });
+    boot(data([e]), { noTaskApi: true });
     await wait(150);
-    eq(taskOnly.snacks.length, 0, '只开任务列表不弹提示条');
-
-    const both = boot(data([mk({ task: true, snack: true, offsets: [0] })]));
-    await wait(150);
-    eq(both.snacks.length, 1, '两个都开时弹提示条');
-    ok(/今天/.test(both.snacks[0] || ''), '文案含「今天」');
-    ok(/甲/.test(both.snacks[0] || ''), '文案含名称');
-
-    const snackOnly = boot(data([mk({ task: false, snack: true, offsets: [0] })]));
-    await wait(150);
-    eq(snackOnly.snacks.length, 1, '只开提示条也能弹');
-    eq(taskList(snackOnly.host).length, 0, '只开提示条不建任务');
-
-    const none = boot(data([mk({ task: false, snack: false, offsets: [0] })]));
-    await wait(150);
-    eq(none.snacks.length, 0, '两个都关不弹');
-    eq(taskList(none.host).length, 0, '两个都关不建任务');
-
-    const arch = boot(data([mk({ task: true, snack: true, offsets: [0] }, true)]));
-    await wait(150);
-    eq(arch.snacks.length, 0, '归档的日子不弹提示条');
-    eq(taskList(arch.host).length, 0, '归档的日子不建任务');
+    ok(true, '没有任务 API 时静默跳过，不抛异常');
   }
 
-  console.log('[11] 宿主未提供任务 API 也不崩溃');
+  console.log('[11] 完成并归档后不重建');
   {
-    const e = ev({ id: 'j1', title: '旧版本', date: inDays(0), remind: { task: true, snack: true, offsets: [0] } });
-    const { snacks } = boot(data([e]), { noTaskApi: true });
-    await wait(150);
-    eq(snacks.length, 1, '降级为提示条仍可用');
-  }
-
-  console.log('[12] 完成并归档后不重建');
-  {
-    const e = ev({ id: 'k1', title: '年检', date: inDays(5), remind: { task: true, snack: false, offsets: [0] } });
+    const e = ev({ id: 'k1', title: '年检', date: inDays(5), remind: { task: true, offsets: [0] } });
     const first = boot(data([e]));
     await wait(150);
     const t = taskList(first.host)[0];
@@ -431,14 +394,14 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     eq(taskList(first.host).length, 0, '已完成过的这一轮不再重新生成');
   }
 
-  console.log('[13] 坏数据不崩溃');
+  console.log('[12] 坏数据不崩溃');
   {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only', url: 'https://localhost/' });
     const w = dom.window;
     const api = {
       Hooks: { PERSISTED_DATA_CHANGED: 'p', TASK_DELETE: 'd' },
       onReady(fn) { fn(); }, onUnload() {}, registerHook() {}, registerSidePanelButton() {}, registerMenuEntry() {},
-      showIndexHtmlAsView() {}, showSnack() {},
+      showIndexHtmlAsView() {},
       loadSyncedData() { return Promise.resolve('{broken json'); },
       log: { warn() {}, info() {}, err() {}, error() {}, log() {} }
     };

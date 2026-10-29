@@ -31,7 +31,7 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，数�
 
 1. 打开 Super Productivity → `设置` → `插件`
 2. 点击 `Choose Plugin File`（选择插件文件）
-3. 选中 `releases/sp-milestone-v1.2.0.zip`
+3. 选中 `releases/sp-milestone-v1.3.0.zip`
 4. 安装后，需要**开启插件**，左侧导航出现 `Milestone` 入口（入口名固定不翻译，见文末「命名约定」）
 
 > 不需要解压 ZIP。网页版因浏览器跨域限制无法自动下载，请手动下载 ZIP 后用同样方式安装。
@@ -66,21 +66,19 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，数�
 **关于归档**：编辑任意事项时会看到「归档」开关（**节日没有这个开关**——节日每年都会再来）打开后该事项：
 
 - 不再出现在「全部」以及各个分类里，只出现在「归档」视图
-- **不会再提醒**（任务列表里对应的任务会被删除，提示条也不会弹）
+- **不会再提醒**（任务列表里对应的任务会被删除）
 - 提醒配置本身会保留，取消归档后按原设置恢复
 - 在归档视图里点「添加」，新建的事项默认就是归档状态。
 
 ## 提醒功能
 
-提醒**不是**一个全局总开关。每个事项的编辑页里有两个独立开关：
+提醒**不是**一个全局总开关，而是每个事项各自选择是否提醒：打开「在任务列表提醒我」后，到期会在**收件箱**插入一条任务，并打上 `milestone` 标签；关掉则对应任务立即被删除。
 
-| 开关 | 打开后的效果 | 关掉后的效果 |
-| --- | --- | --- |
-| 加入任务列表 | 在**收件箱**插入一条任务，并打上 `milestone` 标签 | 对应任务立即被删除 |
-| 打开应用时弹窗提示条 | 应用启动或跨天检查时若到点，弹一条 snack | 不弹 |
+**只有任务列表这一条通道**：宿主没有系统级推送，弹一下就消失的提示条没意义，已整体移除（早先的「打开应用时弹提示条」开关与相关逻辑一并删掉，数据里也不会再写这个字段）。
+
 任务**落在收件箱**、不建项目：插件会在应用里准备好 `milestone` 标签，所有提醒任务都带上它，点标签就能一次筛出全部提醒。
 
-**提前天数**（当天 / 1 / 3 / 7 / 30 天，可多选）对两个渠道共用：任务列表按最近的一档决定到期日，提示条在命中的那几天各弹一次。
+**提前天数**（当天 / 1 / 3 / 7 / 30 天，可多选）决定这条任务哪天变成待办：取最近的一档作为到期日，档位过了自动推进到更近的一档，所以漏了也还能在列表里看到（逾期）。
 
 任务的**到期日 = 该提醒你的那一天**。同一件事只占一条任务，不会每个档位各生成一条；某个档位过了，任务自动推进到下一个更近的档位。
 
@@ -123,7 +121,7 @@ ml:ev=e1;cy=2027-05-14
 
 - **卸载插件不会清理已生成的任务**：卸载/禁用后任务会留在收件箱里（带 `milestone` 标签）。卸载前把各个事项的「加入任务列表」关掉，或卸载后按标签 `milestone` 一次性清理
 - **老任务留在旧项目里**：1.0.1 及更早版本把任务建在「里程碑提醒」项目里。宿主没有安全的「把任务搬到另一个项目」接口（直接改 `projectId` 会与项目侧的 `taskIds` 对不上），所以升级后**只给老任务补上 `milestone` 标签、不搬项目**；想让它们全部落到收件箱，删掉那个旧项目即可，插件会在下一轮对账时按收件箱 + 标签重建
-- **提醒不会主动推送**：任务列表方式下任务会按时出现在列表里，但「到点弹通知」仍需应用在运行；插件没有系统级后台推送与常驻能力（宿主设计限制）
+- **提醒不会主动推送**：任务会按时出现在任务列表里，但宿主没有系统级后台推送与常驻能力，也不会弹通知 —— 插件侧唯一能做的就是「把任务放进列表」，所以请靠任务列表看提醒（宿主设计限制）
 - 农历数据覆盖 **1900–2100** 年。超出范围时不会崩溃：日期只显示公历（列表里的天数位置仍会标「超出可算年限」）
 - **农历开关与数据联动**：只要库里还有农历事项，开关就锁在「开」且不可关闭（数据层也会把设置自愈为开），避免出现「有农历数据但界面上看不见、也改不了」的状态；删掉这些事项后即可自由关闭
 - 农历换算采用 1900-01-31 为基准的累积天数查表算法，已用 73,384 天逐日往返校验、201 个农历年天数校验
@@ -153,8 +151,7 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 | Tap the detail card | Cycles the reading in the detail page: days → y / mo / d → w / d → h / m / s (the last one requires the seconds timer). Not remembered — reopening starts from days |
 | Lunar switch | **Off by default.** Off: no lunar anywhere (list, details, form, presets). On: dates read "Gregorian (lunar)" or "lunar (Gregorian)" depending on how the entry was entered |
 | Lunar support | With the switch on, lunar birthdays / anniversaries are converted automatically, so every launch shows this year's Gregorian date |
-| Reminders as tasks | Every entry decides on its own whether to create a task; on = inserted, off = deleted |
-| Snackbar reminder | Every entry decides on its own whether to get a snackbar when due; independent of the task list |
+| Reminders as tasks | Every entry decides on its own whether to create a task; on = inserted, off = deleted (the only reminder channel) |
 | Archive | Entries can be archived: hidden from "All" and no longer reminded; the "Archive" chip at the right end of the filter bar is the entry point |
 | Cross-device sync | Uses the app's own sync channel, so desktop / mobile / web stay consistent |
 
@@ -166,7 +163,7 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 
 1. Open Super Productivity → `Settings` → `Plugins`
 2. Click `Choose Plugin File`
-3. Select `releases/sp-milestone-v1.2.0.zip`
+3. Select `releases/sp-milestone-v1.3.0.zip`
 4. After installing, **enable the plugin** — a "Milestone" entry appears in the left navigation
 
 > No need to unzip. The web version cannot download automatically because of browser CORS rules — download the ZIP manually and install it the same way.
@@ -198,21 +195,19 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 **About archiving**: while editing any entry you will see an "Archive" switch (**festivals do not have it** — they come back every year). When on, the entry:
 
 - no longer appears in "All" or any category, only in the "Archive" view
-- **stops reminding** (its task is deleted and no snackbar appears)
+- **stops reminding** (its task is deleted)
 - keeps its reminder configuration, restored when you unarchive
 - creating an entry inside the archive view defaults to archived
 
 ## Reminders
 
-Reminders are **not** a global switch. Every entry has two independent switches on its edit page:
+Reminders are **not** a global switch — every entry decides on its own. Turn on "Remind me in the task list" and a task is inserted into the **Inbox** and tagged `milestone` when due; turn it off and the task is deleted immediately.
 
-| Switch | When on | When off |
-| --- | --- | --- |
-| Add to task list | A task is inserted into the **Inbox** and tagged `milestone` | The task is deleted immediately |
-| Snackbar on app open | A snackbar appears at start-up or on the day-rollover check when due | Nothing appears |
+**This is the only reminder channel**: the host has no system-level push, and a snackbar that vanishes after a few seconds is pointless, so it has been removed entirely (the old "Snackbar when the app opens" switch and all its logic are gone, and the field is no longer written to your data).
+
 Tasks **land in the Inbox**, not in a project: the plugin makes sure a `milestone` tag exists and puts it on every reminder task, so one tag click filters them all.
 
-**Lead days** (same day / 1 / 3 / 7 / 30, multi-select) are shared by both channels: the task list uses the nearest slot, the snackbar fires on each matching day.
+**Lead days** (same day / 1 / 3 / 7 / 30, multi-select) decide when the task becomes actionable: the nearest slot is used as the due date, and once a slot passes the task moves on to the next nearest one — so a missed reminder is still visible in the list (overdue).
 
 A task's **due date is the day you want to be reminded**. One entry owns one task, no per-slot duplicates; when a slot passes the task moves on to the next nearest one.
 
@@ -254,7 +249,7 @@ Platform differences are deliberately avoided: the UI is an iframe full-page vie
 ## Known limits
 
 - **Uninstalling does not clean up generated tasks**: they stay in the reminder project. Either turn off "Add to task list" for each entry before uninstalling, or delete the project afterwards
-- **Reminders do not push by themselves**: tasks appear on time, but "notify me at that moment" still requires the app to be running — plugins have no system-level background push (host design)
+- **Reminders do not push by themselves**: tasks show up in the list on time, but the host has no system-level background push and no persistent notifications — the plugin can only put a task in your list, so read reminders from there (host design)
 - Lunar data covers **1900–2100**. Dates outside the range show "Out of range" instead of crashing
 - The lunar conversion uses a cumulative-day table based on 1900-01-31; it is verified with 73,384 round-trip days and 201 lunar-year lengths
 - The `ml:ev=…` marker in task notes is the recognition key; if the notes are wiped during a cross-device sync, a duplicate task may appear temporarily (the next reconciliation removes it)

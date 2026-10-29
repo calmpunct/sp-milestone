@@ -218,13 +218,12 @@
   var TAG_DEFAULT = 'milestone';
 
   /**
-   * 提醒渠道是「每个事项各自选择」的，不是一个全局总开关：
-   *   task  = true → 在任务列表里生成一条任务（关闭即删除该任务）
-   *   snack = true → 打开应用时若到点，弹一条提示条
-   * 两个渠道可以同时开，也可以只开一个。
+   * 提醒配置：每个事项各自选择是否在任务列表里提醒。
+   *   task = true → 在任务列表里生成一条任务（关闭即删除该任务）
+   * 只有任务列表一条通道：宿主没有系统级推送，弹一下就消失的提示条没意义，已整体移除。
    */
   function defaultRemind() {
-    return { task: true, snack: false, offsets: [0, 1] };
+    return { task: true, offsets: [0, 1] };
   }
 
   function emptySettings() {
@@ -336,12 +335,12 @@
   }
 
   /**
-   * 归一化提醒配置：只认 { task, snack, offsets }
-   * 缺省为「加入任务列表 + 当天 / 提前 1 天」；非法档位直接丢弃
+   * 归一化提醒配置：只认 { task, offsets }
+   * 缺省为「提醒 + 当天 / 提前 1 天」；非法档位直接丢弃
    */
   function normalizeRemind(r) {
     if (!r || typeof r !== 'object') {
-      return { task: true, snack: false, offsets: [0, 1] };
+      return { task: true, offsets: [0, 1] };
     }
 
     var offs = [];
@@ -355,7 +354,6 @@
 
     return {
       task: r.task !== false,
-      snack: r.snack === true,
       offsets: offs.length ? offs : [0]
     };
   }
@@ -618,42 +616,12 @@
   }
 
   /**
-   * 这个事项此刻是否有任何提醒（归档 = 静音）
+   * 这个事项此刻是否有提醒（归档 = 静音）
    * 仅用于界面显示小铃铛，与调度逻辑保持同一判断
    */
   function hasReminder(ev) {
     if (!ev || ev.archived || !ev.remind) return false;
-    return !!(ev.remind.task || ev.remind.snack);
-  }
-
-  /**
-   * 挑出当天该弹提示条的事件（只开「任务列表」的不算，归档的也不算）
-   * @param {Array} events
-   * @param {Date} today
-   * @returns {Array<{ev:object, occ:object, offset:number, title:string}>}
-   */
-  function dueReminders(events, today) {
-    var t = startOfDay(today || new Date());
-    var out = [];
-    (events || []).forEach(function (ev) {
-      if (ev.archived) return;
-      if (!ev.remind || !ev.remind.snack) return;
-      var offsets = ev.remind.offsets || [];
-      if (!offsets.length) return;
-
-      var occ = nextOccurrence(ev, t);
-      if (!occ.date || occ.isPast) return;
-      if (offsets.indexOf(occ.days) === -1) return;
-
-      out.push({
-        ev: ev,
-        occ: occ,
-        offset: occ.days,
-        title: titleOf(ev, ageAt(ev, occ, t))
-      });
-    });
-    out.sort(function (a, b) { return a.offset - b.offset; });
-    return out;
+    return ev.remind.task !== false;
   }
 
   /**
@@ -833,7 +801,6 @@
     titleOf: titleOf,
     cleanTitle: cleanTitle,
     hasReminder: hasReminder,
-    dueReminders: dueReminders,
     cycleInfo: cycleInfo,
     dateText: dateText,
     dateLabel: dateLabel,

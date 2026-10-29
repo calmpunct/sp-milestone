@@ -96,11 +96,6 @@
     'offset.30': "30 days before",
     'remind.line': "Reminder {off} · due {date}",
     'remind.yearly': "yearly",
-    'snack.today': "today",
-    'snack.tomorrow': "tomorrow",
-    'snack.inDays': "in {n} days",
-    'snack.more': "{n} more entries",
-    'snack.sep': " | ",
 
     /* ---------------- shell ---------------- */
     loading: "Loading…",
@@ -213,7 +208,6 @@
     'detail.remindArchived': "Archived — muted",
     'detail.remindLine': "{days} · {ch}",
     'detail.remindTask': "Task list",
-    'detail.remindSnack': "Snackbar on open",
     'repeat.on': "Repeats yearly",
     'repeat.off': "No repeat",
 
@@ -250,8 +244,7 @@
     'form.repeat': "Restart after the date passes",
     'form.repeatHint': "On: rolls to the same day next year. Off: stops at \"days passed\".",
     'form.remind': "Reminders",
-    'form.remindTask': "Add to task list",
-    'form.remindSnack': "Snackbar when the app opens",
+    'form.remindTask': "Remind me in the task list",
     'form.archive': "Archive",
     'form.archiveMove': "Move to archive",
     'form.color': "Colour",
@@ -281,10 +274,8 @@
 
     /* ---------------- reminder hints ---------------- */
     'remind.hintArchived': "Archived: hidden from \"All\", never reminded, and its task is deleted.",
-    'remind.hintBoth': "Creates an Inbox task tagged \"{t}\" and shows a snackbar when the app opens.",
     'remind.hintTask': "Creates an Inbox task tagged \"{t}\", synced with the app; switching off deletes it.",
-    'remind.hintSnack': "Snackbar only when the app opens — the plugin has no background push.",
-    'remind.hintNone': "This entry will not remind you (both channels are off).",
+    'remind.hintNone': "This entry will not remind you.",
 
     /* ---------------- settings ---------------- */
     'set.hero': "Featured card",

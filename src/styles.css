@@ -1075,7 +1075,7 @@ html[data-ml-theme='dark'] .ml-days button[aria-pressed='true'] { color: #101318
   }
 }
 
-/* 底部提示条 */
+/* 内嵌 toast（保存成功之类的即时反馈） */
 .ml-toast {
   position: fixed;
   left: 50%;

@@ -78,7 +78,6 @@ const dom = new JSDOM(html, {
       showIndexHtmlAsView() {},
       loadSyncedData() { return Promise.resolve(window.__STORE__); },
       persistDataSynced(s) { window.__STORE__ = s; window.__SAVES__.push(s); return Promise.resolve(); },
-      showSnack() {},
       openDialog() {
         // __answers 优先：需要连续多次确认的流程按顺序取值；否则回落到 __answer
         const q = window.__answers;
@@ -372,12 +371,12 @@ async function backToList() {
   ok($('#mlDetailBody').textContent.includes('妈妈生日（改正）'), '详情立即显示新名称');
   await backToList();
 
-  console.log('[8] 每个事项的提醒渠道');
+  console.log('[8] 每个事项的提醒开关');
   await editEntry('b4');
   await wait(150);
-  eq($('#fTask').checked, true, '默认加入任务列表');
-  eq($('#fSnack').checked, false, '默认不弹提示条');
-  eq($('#fOffsets').hidden, false, '有渠道开启时显示天数');
+  eq($('#fTask').checked, true, '默认开启任务提醒');
+  eq($('#fOffsets').hidden, false, '开着提醒时显示天数');
+  eq($('#fSnack'), null, '提示条开关已从界面移除');
   eq($('#fArchived').checked, false, '默认不归档');
   eq(document.querySelector('#fOffsets button[data-d="0"]').getAttribute('aria-pressed'), 'true', '默认选中当天');
   eq(document.querySelector('#fOffsets button[data-d="1"]').getAttribute('aria-pressed'), 'true', '默认选中提前 1 天');
@@ -385,14 +384,13 @@ async function backToList() {
 
   $('#fTask').click();
   await wait(60);
-  eq($('#fTask').checked, false, '任务列表已关闭');
-  eq($('#fOffsets').hidden, true, '两个渠道都关时隐藏天数');
-  ok($('#fRemindHint').textContent.includes('不会提醒'), '提示两个渠道都关着');
+  eq($('#fTask').checked, false, '提醒已关闭');
+  eq($('#fOffsets').hidden, true, '关掉提醒后隐藏天数');
+  ok($('#fRemindHint').textContent.includes('不会提醒'), '提示不会提醒');
 
-  $('#fSnack').click();
+  $('#fTask').click();
   await wait(60);
-  eq($('#fOffsets').hidden, false, '开了提示条后恢复天数');
-  ok($('#fRemindHint').textContent.includes('提示条'), '说明切到提示条');
+  eq($('#fOffsets').hidden, false, '重新打开后恢复天数');
 
   Array.from(document.querySelectorAll('#fOffsets button')).forEach(function (b) {
     if (b.getAttribute('aria-pressed') === 'true') b.click();
@@ -405,11 +403,11 @@ async function backToList() {
   await wait(450);
 
   const withRemind = JSON.parse(window.__STORE__).events.filter((e) => e.id === 'b4')[0];
-  eq(withRemind.remind.task, false, '任务列表关闭已写入');
-  eq(withRemind.remind.snack, true, '提示条开启已写入');
+  eq(withRemind.remind.task, true, '提醒开关已写入');
+  eq('snack' in withRemind.remind, false, '不再写已移除的提示条字段');
   eq(withRemind.remind.offsets.join(','), '7', '提醒天数已写入');
   eq(withRemind.archived, false, '未归档已写入');
-  eq(document.querySelectorAll('.ml-bell').length, 6, '还有一个渠道开着 → 铃铛仍在');
+  eq(document.querySelectorAll('.ml-bell').length, 6, '开着提醒 → 铃铛仍在');
   await backToList();
 
   console.log('[9] 新增记录');
@@ -656,7 +654,7 @@ async function backToList() {
         w2.PluginAPI = {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
           onReady(fn) { setTimeout(fn, 0); },
-          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          registerHook() {}, showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(JSON.stringify(seed)); },
           persistDataSynced() { return Promise.resolve(); },
           openDialog() { return Promise.resolve('取消'); }
@@ -852,7 +850,7 @@ async function backToList() {
           },
           onReady(fn) { setTimeout(fn, 0); },
           registerHook() {},
-          showIndexHtmlAsView() {}, showSnack() {},
+          showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(JSON.stringify(seed2)); },
           persistDataSynced() { return Promise.resolve(); },
           openDialog() { return Promise.resolve('Cancel'); }
@@ -962,7 +960,6 @@ async function backToList() {
     const before = JSON.parse(window.__STORE__).events.length;
     ok(before > 0, '清除前有 ' + before + ' 条');
     window.localStorage.setItem('ml-task-map-v1', '{"task_1":"b1"}');
-    window.localStorage.setItem('ml-remind-seen', '{"k":1}');
     window.localStorage.setItem('ml-handled-v1', '{"k":1}');
 
     $('#mlSettings').click();
@@ -995,7 +992,6 @@ async function backToList() {
     eq(document.querySelectorAll('.ml-item').length, 0, '列表清空');
     eq($('#mlSetLayer').hidden, true, '清除后关闭设置面板');
     eq(window.localStorage.getItem('ml-task-map-v1'), null, '本机任务映射表已清');
-    eq(window.localStorage.getItem('ml-remind-seen'), null, '本机已提示记录已清');
     eq(window.localStorage.getItem('ml-handled-v1'), null, '本机已处理记录已清');
 
     // 清空后还能继续用
@@ -1034,7 +1030,7 @@ async function backToList() {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
           onReady(fn) { setTimeout(fn, 0); },
           registerHook(k, fn) { hooks[k] = fn; },
-          showIndexHtmlAsView() {}, showSnack() {},
+          showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(JSON.stringify(seed)); },
           persistDataSynced(s) { saves.push(s); return Promise.resolve(); },
           openDialog() { return Promise.resolve('Cancel'); }
@@ -1102,7 +1098,7 @@ async function backToList() {
           getCurrentLanguage() { return hostLang; },
           onReady(fn) { setTimeout(fn, 0); },
           registerHook(k, fn) { hooks[k] = fn; },
-          showIndexHtmlAsView() {}, showSnack() {},
+          showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(JSON.stringify(seed)); },
           persistDataSynced() { return Promise.resolve(); },
           openDialog() { return Promise.resolve('Cancel'); }
@@ -1156,7 +1152,7 @@ async function backToList() {
         w5.PluginAPI = {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
           onReady(fn) { setTimeout(fn, 0); },
-          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          registerHook() {}, showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(w5.__STORE__); },
           persistDataSynced(s) { w5.__STORE__ = s; return Promise.resolve(); },
           openDialog() { return Promise.resolve('取消'); }
@@ -1210,7 +1206,7 @@ async function backToList() {
         w6.PluginAPI = {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
           onReady(fn) { setTimeout(fn, 0); },
-          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          registerHook() {}, showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(w6.__STORE__); },
           persistDataSynced(s) { w6.__STORE__ = s; return Promise.resolve(); },
           openDialog() { return Promise.resolve('取消'); }
@@ -1258,7 +1254,7 @@ async function backToList() {
         w7.PluginAPI = {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
           onReady(fn) { setTimeout(fn, 0); },
-          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          registerHook() {}, showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(w7.__STORE__); },
           persistDataSynced(s) { w7.__STORE__ = s; return Promise.resolve(); },
           openDialog() { return Promise.resolve('Cancel'); }
@@ -1307,7 +1303,7 @@ async function backToList() {
             },
             onReady(fn) { setTimeout(fn, 0); },
             registerHook() {},
-            showIndexHtmlAsView() {}, showSnack() {},
+            showIndexHtmlAsView() {},
             loadSyncedData() { return Promise.resolve(JSON.stringify(seed)); },
             persistDataSynced() { return Promise.resolve(); },
             openDialog() { return Promise.resolve('Cancel'); }
@@ -1373,7 +1369,7 @@ async function backToList() {
         w.PluginAPI = {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
           onReady(fn) { setTimeout(fn, 0); },
-          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          registerHook() {}, showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(w.__STORE__); },
           persistDataSynced(s) { w.__STORE__ = s; w.__SAVES__.push(s); return Promise.resolve(); },
           openDialog() { return Promise.resolve('取消'); }
@@ -1471,7 +1467,7 @@ async function backToList() {
         w.PluginAPI = {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
           onReady(fn) { setTimeout(fn, 0); },
-          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          registerHook() {}, showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(w.__STORE__); },
           persistDataSynced(s) { w.__STORE__ = s; w.__SAVES__.push(s); return Promise.resolve(); },
           openDialog() { return Promise.resolve('取消'); }
@@ -1535,7 +1531,7 @@ async function backToList() {
         w.PluginAPI = {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
           onReady(fn) { setTimeout(fn, 0); },
-          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          registerHook() {}, showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(w.__STORE__); },
           persistDataSynced(s) { w.__STORE__ = s; w.__SAVES__.push(s); return Promise.resolve(); },
           openDialog() { return Promise.resolve('取消'); }
@@ -1590,7 +1586,7 @@ async function backToList() {
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
           onReady(fn) { setTimeout(fn, 0); },
           registerHook(k, fn) { w.__hooks[k] = fn; },
-          showIndexHtmlAsView() {}, showSnack() {},
+          showIndexHtmlAsView() {},
           getCurrentLanguage() { return curLang; },
           getAppState() { return Promise.resolve({ globalConfig: { localization: { lng: '' } } }); },
           loadSyncedData() { return Promise.resolve(w.__STORE__); },

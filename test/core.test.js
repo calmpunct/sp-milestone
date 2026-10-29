@@ -233,70 +233,39 @@ eq(dirty.events[0].title, '我妈', '导入时清掉年龄与「生日」');
 eq(Core.titleOf(dirty.events[0], 55), '我妈生日（55岁）', '渲染时重新拼接，不重复');
 eq(dirty.events[1].title, '我妈', '数据里始终是纯名称');
 
-// 17. 提醒渠道（每个日子独立）
-console.log('[8] 自定义提醒渠道');
+// 17. 提醒设置（每个日子独立，只有任务列表一条通道）
+console.log('[8] 提醒设置');
 const evR = {
   id: 'r1', title: '项目上线', kind: 'countdown', calendar: 'solar', date: '2026-11-02',
-  lunar: null, repeat: false, remind: { task: true, snack: true, offsets: [0, 1, 3, 7] }
+  lunar: null, repeat: false, remind: { task: true, offsets: [0, 1, 3, 7] }
 };
-let due = Core.dueReminders([evR], TODAY);
-eq(due.length, 1, '提前 7 天命中的确提醒');
-eq(due[0].offset, 7, '命中 7 天档位');
-eq(due[0].title, '项目上线', '提醒文案名称');
+eq(Core.hasReminder(evR), true, '开着提醒显示铃铛');
+eq(Core.hasReminder({ remind: { task: false, offsets: [0] } }), false, '关掉提醒不显示铃铛');
+eq(Core.hasReminder({ remind: { offsets: [0] } }), true, '只有档位时按默认开');
+eq(Core.hasReminder({}), false, '没有 remind 字段不显示铃铛');
 
-evR.remind.offsets = [1, 3];
-eq(Core.dueReminders([evR], TODAY).length, 0, '未配置的档位不提醒');
-
-// 只开任务列表：进任务列表，但不弹提示条
-evR.remind.offsets = [7];
-evR.remind.snack = false;
-eq(Core.dueReminders([evR], TODAY).length, 0, '只开任务列表的日子不弹提示条');
-eq(Core.hasReminder(evR), true, '开了任务列表仍算有提醒');
-
-// 只开提示条
-evR.remind.snack = true;
-evR.remind.task = false;
-eq(Core.dueReminders([evR], TODAY).length, 1, '只开提示条的日子仍然弹');
-evR.remind.task = true;
-
-// 归档 = 静音（两个渠道都静音）
+// 归档 = 静音
 evR.archived = true;
-eq(Core.dueReminders([evR], TODAY).length, 0, '归档的日子不弹提示条');
 eq(Core.hasReminder(evR), false, '归档的日子不显示铃铛');
 evR.archived = false;
 
-eq(Core.hasReminder({ remind: { task: false, snack: false } }), false, '两个渠道都关着不显示铃铛');
-eq(Core.hasReminder({ remind: { task: true, snack: false } }), true, '任一渠道开着就显示铃铛');
-
-// 当天命中
-const evToday = { id: 'r2', title: '今天的事', kind: 'anniversary', calendar: 'solar',
-  date: Core.ymd(TODAY), lunar: null, repeat: true, remind: { task: true, snack: true, offsets: [0, 1] } };
-eq(Core.dueReminders([evToday], TODAY)[0].offset, 0, '当天命中 0 档位');
-
-// 过期的一次性日子不提醒
-const evPast = { id: 'r3', title: '过期', kind: 'countdown', calendar: 'solar', date: '2026-01-01',
-  lunar: null, repeat: false, remind: { task: true, snack: true, offsets: [0] } };
-eq(Core.dueReminders([evPast], TODAY).length, 0, '过期不提醒');
-
-// 排序：offset 小的在前
-const many = Core.dueReminders([
-  { id: 'a', title: 'A', kind: 'countdown', calendar: 'solar', date: '2026-11-02', lunar: null, repeat: false, remind: { task: true, snack: true, offsets: [7] } },
-  { id: 'b', title: 'B', kind: 'countdown', calendar: 'solar', date: '2026-10-27', lunar: null, repeat: false, remind: { task: true, snack: true, offsets: [1] } }
-], TODAY);
-eq(many.map((x) => x.offset).join(','), '1,7', '按临近程度排序');
+// 提示条渠道已整体移除：数据模型里不该再有 snack
+eq('snack' in Core.defaultRemind(), false, '提醒配置里没有 snack 字段');
+eq('snack' in Core.normalizeRemind({ task: true, snack: true, offsets: [3] }), false, '旧数据里的 snack 被丢弃');
+eq(Core.dueReminders, undefined, 'dueReminders 已移除');
 
 // 18. 提醒配置的容错（不兼容 2.0 数据：未发布的软件，只保留当前格式）
 console.log('[9] 提醒配置容错');
 const nd = Core.normalize({ events: [{ title: 'x', date: '2026-01-01' }] }).events[0];
 eq(nd.remind.task, true, '缺省加入任务列表');
-eq(nd.remind.snack, false, '缺省不弹提示条');
+eq('snack' in nd.remind, false, '提醒配置里没有已移除的提示条字段');
 eq(nd.remind.offsets.join(','), '0,1', '默认当天 + 提前 1 天');
 eq(nd.archived, false, '默认不归档');
 
 const nbad = Core.normalize({ events: [{ title: 'y', date: '2026-01-01', remind: { task: true, offsets: [2, 5, 99] } }] }).events[0];
 eq(nbad.remind.offsets.join(','), '0', '非法档位回落当天');
 
-const noff = Core.normalize({ events: [{ title: 'z', date: '2026-01-01', remind: { task: false, snack: false, offsets: [7] } }] }).events[0];
+const noff = Core.normalize({ events: [{ title: 'z', date: '2026-01-01', remind: { task: false, offsets: [7] } }] }).events[0];
 eq(noff.remind.task, false, '关闭任务列表被保留');
 eq(noff.remind.offsets.join(','), '7', '关闭时保留档位');
 eq('on' in noff.remind, false, '不再写兼容字段 on');
@@ -307,7 +276,7 @@ const oldShape = Core.normalize({
   events: [{ title: 'a', date: '2026-01-01', remind: { on: true, offsets: [0, 3] } }]
 });
 eq(oldShape.events[0].remind.task, true, '旧 on 被忽略，按缺省加入任务列表');
-eq(oldShape.events[0].remind.snack, false, '旧 on 不会打开提示条');
+eq('snack' in oldShape.events[0].remind, false, '不写已移除的提示条字段');
 eq(oldShape.events[0].remind.offsets.join(','), '0,3', '合法档位仍被保留');
 eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,lunar,taskTag,tick', 'settings 只有语言、标签名、置顶、农历与秒级计时开关');
 // 秒级计时默认关：旧数据没这一项、坏值也一律按关（关着连定时器都不建）
@@ -433,9 +402,8 @@ eq(ymd(Core.nextOccurrence(custom, TODAY).date), '2027-01-20', '自定义节日�
 // 节日提醒：与倒数日一致
 const festToday = {
   id: 'f1', title: '国庆节', kind: 'festival', calendar: 'solar', date: Core.ymd(TODAY),
-  lunar: null, term: null, repeat: true, remind: { task: true, snack: true, offsets: [0, 1] }
+  lunar: null, term: null, repeat: true, remind: { task: true, offsets: [0, 1] }
 };
-eq(Core.dueReminders([festToday], TODAY).length, 1, '节日当天提醒');
 eq(Core.hasReminder(festToday), true, '节日显示铃铛');
 
 // 19. 农历往返一致性 + 输入边界

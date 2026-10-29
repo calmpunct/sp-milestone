@@ -1,9 +1,9 @@
 /* ============================================================
  * 里程碑 — 宿主侧逻辑
  *
- * 两条提醒通道，都是「每个事项各自选择」的：
- *   1. 任务列表投影：该事项开着「加入任务列表」时，把下一次提醒写成一条任务
- *   2. 提示条：该事项开着「打开应用时弹提示条」时，应用启动/跨天检查时弹 snack
+ * 一条提醒通道，每个事项各自选择是否开启：
+ *   任务列表投影：该事项开着「任务提醒」时，把下一次提醒写成一条任务
+ * （宿主没有系统级推送，弹一下就消失的提示条没意义，已整体移除）
  *
  * 一致性策略：插件数据是唯一真相，任务只是投影。每次对账做全量 diff
  * （新增 / 更新 / 删除），因此删事件、改日期、关掉某天的任务提醒、归档，
@@ -14,11 +14,9 @@
 
   var I = window.I18N;
 
-  var SEEN_KEY = 'ml-remind-seen';
   var MAP_KEY = 'ml-task-map-v1';
   var DONE_KEY = 'ml-handled-v1';
   var CHECK_EVERY = 10 * 60 * 1000; // 10 分钟复查一次，覆盖跨午夜场景
-  var KEEP_DAYS = 120;
   var DONE_KEEP_DAYS = 800;         // 已处理记录保留到下一个年度周期，防止归档后被重建
   var REBUILD_DELAY = 1500;         // 任务被外部删除后延迟重建，合并连续删除
   var MAX_TASKS = 200;              // 安全阀：避免异常数据一次灌爆任务列表
@@ -612,80 +610,9 @@
     });
   }
 
-  /* ---------------- 提示条（可选） ---------------- */
-
-  function readSeen() {
-    try {
-      var raw = window.localStorage.getItem(SEEN_KEY);
-      var obj = raw ? JSON.parse(raw) : null;
-      return obj && typeof obj === 'object' ? obj : {};
-    } catch (e) { return {}; }
-  }
-
-  function writeSeen(obj) {
-    try {
-      window.localStorage.setItem(SEEN_KEY, JSON.stringify(obj));
-    } catch (e) { /* 存储不可用时退化为每次启动都提示 */ }
-  }
-
-  function pruneSeen(seen, now) {
-    var cutoff = now - KEEP_DAYS * 86400000;
-    Object.keys(seen).forEach(function (k) {
-      if (!seen[k] || seen[k] < cutoff) delete seen[k];
-    });
-    return seen;
-  }
-
-  function whenText(offset) {
-    if (offset === 0) return I.t('snack.today');
-    if (offset === 1) return I.t('snack.tomorrow');
-    return I.t('snack.inDays', { n: offset });
-  }
-
-  function runSnack(data) {
-    if (stopped || !data) return;
-    if (!data.events || !data.events.length) return;
-
-    var today = new Date();
-    var now = today.getTime();
-    // dueReminders 内部只挑「开了提示条且未归档」的事项，渠道判断不在这里
-    var due = EventCore.dueReminders(data.events, today);
-    if (!due.length) return;
-
-    var seen = pruneSeen(readSeen(), now);
-    var fresh = due.filter(function (item) {
-      var key = item.ev.id + '@' + EventCore.ymd(item.occ.date) + '#' + item.offset;
-      item._key = key;
-      return !seen[key];
-    });
-    if (!fresh.length) return;
-
-    // 先记账再提示，避免重复弹窗
-    fresh.forEach(function (item) { seen[item._key] = now; });
-    writeSeen(seen);
-
-    var parts = fresh.slice(0, 3).map(function (item) {
-      return whenText(item.offset) + ' · ' + item.title;
-    });
-    var msg = parts.join(I.t('snack.sep'));
-    if (fresh.length > 3) msg += I.t('snack.sep') + I.t('snack.more', { n: fresh.length });
-
-    try {
-      P().showSnack({ msg: msg, type: 'INFO', ico: 'event_available' });
-    } catch (e) { /* ignore */ }
-  }
-
   function tick() {
     if (stopped) return;
     reconcile('timer');
-    if (dataCache) {
-      runSnack(dataCache);
-      return;
-    }
-    loadData().then(function (data) {
-      dataCache = data;
-      runSnack(data);
-    }, function () { /* 数据未就绪，等下一轮 */ });
   }
 
   function startTimer() {
@@ -710,8 +637,8 @@
   registerEntry();
   watchData();
 
-  // 启动时先读一次数据：拿到 settings.lang 后文案才定下来，boot 里的提示条也能直接用缓存。
-  // 提醒 / 任务投影仍然等 boot 的 3.5 秒后再动，避免和宿主启动提示抢镜。
+  // 启动时先读一次数据：拿到 settings.lang 后文案才定下来，boot 对账时标题/备注才是对的。
+  // 任务投影等 boot 的 3.5 秒后再动，避免和宿主启动流程抢资源。
   // 语言设定值（globalConfig.localization.lng）也在这时补读：跟随系统时宿主只会回报默认值 en，
   // 不补读的话任务标题会一直是英文。
   Promise.all([loadData(), primeHostLang()]).then(function (r) {
@@ -725,8 +652,6 @@
     setTimeout(function () {
       if (stopped) return;
       reconcile('boot');
-      if (dataCache) runSnack(dataCache);
-      else loadData().then(function (d) { dataCache = d; runSnack(d); }, function () {});
       startTimer();
     }, 3500);
   }
