@@ -57,6 +57,8 @@
     'group.custom': "自定义",
     'term.qingming': "清明",
     'date.notSet': "日期未设置",
+    // 公历与农历合成一段：{a} 是主日期（按录入时的历法），{b} 是另一种历法的对照
+    'date.pair': "{a}（{b}）",
     // 生日括号里的年龄 = 这次生日（下次发生那天）多少岁，不是今天多大
     'age.suffix': "（{n}岁）",
     // 生日的「生日」两字由界面补在年龄后面，名称里写的会被摘掉
@@ -145,11 +147,13 @@
     // 单位只说「天」：前面那句「距离…还有 / 已经走过」已经交代了语义
     'hero.unitRemain': "天",
     'hero.unitElapsed': "天",
-    'hero.barDone': "本年度已过 {p}%",
     // 生日的进度条反过来画：显示还剩多少，越接近生日越短；{n} 是此刻的年龄
     'hero.barLeft': "还剩 {p}%",
     'hero.barLeftAge': "{n}岁还有 {p}%",
-    'hero.barTotal': "共 365 天",
+    // 纪念日画的是「本周年」：从上一个周年走到下一个周年，刚好一年一轮
+    'hero.barCycle': "本周年已过 {p}%",
+    // {n} 是这一轮的实际天数（农历周年、闰年会差几天，不是固定的 365）
+    'hero.barTotal': "共 {n} 天",
     'hero.emptyHint': "点右上角「添加」记下第一个重要日期",
     'hero.emptyArchiveHint': "归档中的事项不参与置顶",
 
@@ -164,10 +168,16 @@
 
     /* ---------------- 详情页 ---------------- */
     'detail.title': "详情",
-    'detail.date': "日期",
-    'detail.lunar': "农历",
-    'detail.next': "下次",
-    'detail.last': "上次",
+    // 第一个信息行的标签：同一个「日期」在四种类型里说的不是一回事
+    'detail.dateOf.birthday': "出生日期",
+    'detail.dateOf.anniversary': "那一天",
+    'detail.dateOf.countdown': "目标日期",
+    'detail.dateOf.festival': "节日日期",
+    // 第二次发生的那个日子 + 还有多少天
+    'detail.bdayAge': "{n}岁生日",
+    'detail.bdayNext': "下次生日",
+    'detail.annAge': "{n} 周年时间",
+    'detail.annNext': "下次周年",
     'detail.span': "已满",
     'detail.remind': "提醒",
     'detail.status': "状态",
@@ -257,6 +267,10 @@
     'set.hero': "置顶卡片",
     'set.heroToggle': "扩大显示第一条",
     'set.heroHint': "顶部放大显示<b>当前分区</b>排在最前的那条；关掉则列表贴顶。",
+    // 分组标题叫「历法」，开关自己说「启用农历系统」——两行都写「农历」读起来是重复
+    'set.lunar': "历法",
+    'set.lunarToggle': "启用农历系统",
+    'set.lunarLocked': "还有 {n} 个农历事项，不能关闭：关掉后这些记录只显示公历、也改不了历法。先删掉它们再关。",
     'set.data': "数据",
     'set.clear': "清除里程碑数据缓存",
     'set.clearHint': "数据错乱、任务重复或日期算错时可用。会清空全部事项与设置，并移除本插件生成的任务；<b>其他任务与项目不受影响</b>。",
@@ -287,6 +301,7 @@
     'toast.pickDate': "请选择日期",
     'toast.pickFestival': "请选择节日",
     'toast.batch': "已添加 {n} 个节日",
+    'toast.lunarLocked': "还有农历事项，无法关闭农历显示",
     saveN: "添加 {n} 个",
   };
 });

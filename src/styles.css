@@ -899,6 +899,10 @@ html[data-ml-theme='dark'] .ml-preset[aria-pressed='true'] { color: #101318; }
 .ml-switch input:checked + i { background: var(--ml-accent); }
 .ml-switch input:checked + i::after { transform: translateX(18px); }
 
+/* 锁住的开关（有农历事项时的农历显示）：灰掉但保持已选状态的形态，让人看出「不是关着」 */
+.ml-switch input:disabled + i { opacity: 0.45; cursor: not-allowed; }
+.ml-switch input:disabled + i::after { box-shadow: none; }
+
 /* 提醒天数多选 */
 .ml-days {
   display: flex;

@@ -26,8 +26,9 @@ const YESTERDAY = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate(
 
 const SEED = {
   version: 1,
-  // 固定中文：jsdom 的 navigator.language 是 en-US，不写这一项界面会是英文
-  settings: { lang: 'zh' },
+  // 固定中文：jsdom 的 navigator.language 是 en-US，不写这一项界面会是英文。
+  // 农历显示打开：下面有农历生日，也是 [3.5] / [5] / [6] 的考点
+  settings: { lang: 'zh', lunar: true },
   events: [
     { id: 'b1', title: '妈妈', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
       lunar: { year: 1968, month: 4, day: 18, isLeap: false }, repeat: true, color: '#d6336c', note: '' },
@@ -97,6 +98,13 @@ const detailRow = (label) => {
   const rows = Array.from(document.querySelectorAll('#mlDetailBody .ml-detail-row'));
   const hit = rows.find((r) => r.querySelector('.ml-detail-k').textContent === label);
   return hit ? hit.querySelector('.ml-detail-v').textContent : null;
+};
+
+/** 标签是动态生成的行（「3岁生日」「2 周年时间」）：按正则找 */
+const detailRowMatch = (re) => {
+  const rows = Array.from(document.querySelectorAll('#mlDetailBody .ml-detail-row'));
+  const hit = rows.find((r) => re.test(r.querySelector('.ml-detail-k').textContent));
+  return hit ? { k: hit.querySelector('.ml-detail-k').textContent, v: hit.querySelector('.ml-detail-v').textContent } : null;
 };
 
 /** 点条目 → 详情页 → 点右上角「编辑」进表单；列表点击已不再直接打开表单 */
@@ -230,9 +238,21 @@ async function backToList() {
   eq($('#mlLayer').hidden, true, '编辑表单还没打开（详情是只读的）');
   ok(/妈妈生日（\d+岁）/.test($('#mlDetailBody').textContent), '详情显示名称（「生日」在前、年龄收尾）');
   eq(detailRow('类型'), null, '不再单列类型：卡片顶部已有标签');
-  eq(detailRow('历法'), null, '不再单列历法：日期 / 农历两行已经说清');
-  ok(/农历四月十八/.test(detailRow('农历')), '详情显示农历日期：' + detailRow('农历'));
-  ok(/属/.test(detailRow('农历')), '农历记录显示干支生肖：' + detailRow('农历'));
+  eq(detailRow('历法'), null, '不再单列历法：日期行已经说清');
+  eq(detailRow('农历'), null, '农历不再单列一行（与日期合并）');
+  // 生日的第一个信息行叫「出生日期」：它说的是出生那天，不是下一次生日
+  eq(detailRow('日期'), null, '不再笼统地叫「日期」');
+  ok(/农历四月十八/.test(detailRow('出生日期')), '出生日期行合并了农历：' + detailRow('出生日期'));
+  ok(detailRow('出生日期').indexOf('农历四月十八') === 0, '农历记录把农历写在前面（农历（公历））');
+  ok(/1968-05-14/.test(detailRow('出生日期')), '括号里是对应的公历日期：' + detailRow('出生日期'));
+  ok(/属/.test(detailRow('出生日期')), '农历记录在日期行带上干支生肖：' + detailRow('出生日期'));
+  ok(!/还有|已过/.test(detailRow('出生日期')), '出生日期就是那一天，不挂天数：' + detailRow('出生日期'));
+  // 第二行是下一次生日：标签带年龄，值带「还有 N 天」
+  const bdayRow = detailRowMatch(/^\d+岁生日$/);
+  ok(!!bdayRow, '生日详情有「N岁生日」一行');
+  ok(/^\d{4}-\d{2}-\d{2} · 周./.test(bdayRow.v), '生日行给日期与星期：' + bdayRow.v);
+  ok(/还有 \d+ 天|就是今天/.test(bdayRow.v), '生日行带剩余天数：' + bdayRow.v);
+  eq(detailRow('目标日期'), null, '生日没有「目标日期」行');
   ok(/任务/.test(detailRow('提醒')), '详情显示提醒渠道：' + detailRow('提醒'));
   eq(detailRow('状态'), null, '正常状态不占一行（只有归档才显示）');
   ok(!!$('#mlDetailBody .ml-hero-num'), '详情有天数大数字（与置顶卡同一套）');
@@ -252,19 +272,50 @@ async function backToList() {
   await backToList();
   eq($('#mlDetailLayer').hidden, true, '点返回回到列表');
 
-  console.log('[3.6] 已过语义的详情：「上次」指向起算日');
+  console.log('[3.6] 纪念日详情：「那一天」+「N 周年时间」+「已满」');
   byId('b3').click();
   await wait(150);
   eq(detailRow('类型'), null, '纪念日详情同样不列类型');
-  ok(detailRow('上次').indexOf('2018-06-16') === 0, '「上次」是起算日，不是下次发生日：' + detailRow('上次'));
-  ok(/已过 \d+ 天/.test(detailRow('上次')), '配「已过 N 天」：' + detailRow('上次'));
+  eq(detailRow('上次'), null, '不再有「上次」这种叫法');
+  ok(detailRow('那一天').indexOf('2018-06-16') === 0, '「那一天」是起算日，不是下次发生日：' + detailRow('那一天'));
+  ok(/已过 \d+ 天/.test(detailRow('那一天')), '那一天配「已过 N 天」：' + detailRow('那一天'));
+  const annRow = detailRowMatch(/^\d+ 周年时间$/);
+  ok(!!annRow, '有「N 周年时间」一行');
+  ok(!!annRow && /^\d{4}-\d{2}-\d{2} · 周./.test(annRow.v), '周年行给日期与星期：' + (annRow && annRow.v));
+  ok(!!annRow && /还有 \d+ 天|就是今天/.test(annRow.v), '周年行带剩余天数：' + (annRow && annRow.v));
+  // 周年行说的是「下一个」周年，所以比已满整年多一年（正日子当天两者相等）
+  const nextNth = (now.getMonth() === 5 && now.getDate() === 16) ? annYears : annYears + 1;
+  eq(!!annRow && annRow.k, nextNth + ' 周年时间', '周年行的数字是下一次那届');
   ok(/周年/.test(detailRow('已满')), '显示已满周年与零头：' + detailRow('已满'));
+  // 行序：那一天 → 已满 → N 周年时间（先认起点，再说走了多久，最后说下一个节点）
+  const annKeys = Array.from(document.querySelectorAll('#mlDetailBody .ml-detail-row'))
+    .map((r) => r.querySelector('.ml-detail-k').textContent);
+  ok(annKeys.indexOf('那一天') < annKeys.indexOf('已满'), '「已满」排在「那一天」之后：' + annKeys.join(' / '));
+  ok(annKeys.indexOf('已满') < annKeys.findIndex((k) => /周年时间$/.test(k)),
+    '「N 周年时间」排在「已满」之后：' + annKeys.join(' / '));
+  // 进度条只给生日与纪念日；纪念日按「本周年」画
+  ok(!!$('#mlDetailBody .ml-bar'), '纪念日详情有进度条');
+  ok($('#mlDetailBody .ml-bar-text').textContent.includes('本周年已过'), '文案是「本周年已过 N%」：' +
+    $('#mlDetailBody .ml-bar-text').textContent);
   // 备注：单独成块并保留换行，而不是挤进「类型 / 日期」那种键值行
   eq(detailRow('备注'), null, '备注不再混在键值行里');
   ok(!!$('#mlDetailBody .ml-detail-note'), '备注有独立的块');
   ok(/每年这天回老地方吃饭/.test($('#mlDetailBody .ml-detail-note').textContent), '详情显示备注正文');
   ok(/记得提前订位/.test($('#mlDetailBody .ml-detail-note').textContent), '换行后的第二行也在');
   await backToList();
+
+  console.log('[3.7] 倒数日详情：「目标日期」带天数，不画进度条');
+  byId('b4').click();
+  await wait(150);
+  eq(detailRow('日期'), null, '倒数日不再笼统地叫「日期」');
+  const tgt = detailRow('目标日期');
+  ok(!!tgt && /^2026-12-01/.test(tgt), '目标日期就是目标那天：' + tgt);
+  ok(!!tgt && /还有 \d+ 天|就是今天|已过 \d+ 天/.test(tgt), '目标日期后面直接带天数：' + tgt);
+  eq(detailRow('重复'), '不重复', '显示重复口径');
+  eq(detailRow('下次'), null, '不再有「下次」行（天数已经挂在目标日期上）');
+  eq($('#mlDetailBody .ml-bar'), null, '倒数日不画进度条');
+  await backToList();
+  eq($('#mlDetailLayer').hidden, true, '返回列表');
 
   console.log('[4] 打开农历条目');
   await editEntry('b1');
@@ -692,6 +743,18 @@ async function backToList() {
     document.querySelector('.ml-item-num i').textContent === '就是今天', true, '单位是「天」');
   ok($('.ml-sub').textContent.includes('节日'), '副标题按「节日」计数');
 
+  // 节日不画进度条：它只有「还有 N 天」一个语义，没有可比的一年周期
+  eq($('#mlHero .ml-bar'), null, '节日置顶卡没有进度条');
+  document.querySelector('.ml-item').click();
+  await wait(150);
+  eq(detailRow('日期'), null, '节日不再笼统地叫「日期」');
+  const festDate = detailRow('节日日期');
+  ok(!!festDate && festDate.includes('周'), '节日详情叫「节日日期」并带星期：' + festDate);
+  ok(!!festDate && /还有 \d+ 天|就是今天/.test(festDate), '节日也要倒数（日期后带剩余天数）：' + festDate);
+  eq(detailRow('下次'), null, '节日没有「下次」行');
+  eq($('#mlDetailBody .ml-bar'), null, '节日详情不画进度条');
+  await backToList();
+
   // 自定义节日
   $('#mlAdd').click();
   await wait(150);
@@ -768,7 +831,7 @@ async function backToList() {
     // 回归：补读语言设定值（getAppState → primeHostLang）会异步再跑一次 applyLang，
     // 它重建 #fPresets 时若不恢复选中态，用户刚勾的多个节日会整片变回未选中，
     // 保存按钮也从「添加 3 个」退回「保存」—— 看起来就是「节日多选被弄没了」。
-    const seed2 = { version: 1, settings: { lang: 'auto', hero: true }, events: [] };
+    const seed2 = { version: 1, settings: { lang: 'auto', hero: true, lunar: true }, events: [] };
     const domB = new JSDOM(html, {
       runScripts: 'dangerously',
       pretendToBeVisual: true,
@@ -1280,6 +1343,169 @@ async function backToList() {
     eq(enSys.window.document.querySelector('.ml-title').textContent, 'Milestone',
       '跟随系统 + 英文系统 -> 英文界面');
     enSys.window.close();
+  }
+
+  console.log('[24] 农历开关：默认关闭时不出现任何农历元素');
+  {
+    // 一个不带 lunar 字段的库 = 新装用户：默认关，界面里连「农历」两个字都不该有
+    const seed = {
+      version: 1,
+      settings: { lang: 'zh' },
+      events: [
+        { id: 's1', title: '甲生日', kind: 'birthday', calendar: 'solar', date: '1990-05-12',
+          repeat: true, color: '#f59f00', note: '' },
+        { id: 's2', title: '项目上线', kind: 'countdown', calendar: 'solar', date: '2027-01-01',
+          repeat: false, color: '#1c7ed6', note: '' }
+      ]
+    };
+    const dom9 = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(w) {
+        w.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w.__STORE__ = JSON.stringify(seed);
+        w.__SAVES__ = [];
+        w.PluginAPI = {
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(w.__STORE__); },
+          persistDataSynced(s) { w.__STORE__ = s; w.__SAVES__.push(s); return Promise.resolve(); },
+          openDialog() { return Promise.resolve('取消'); }
+        };
+      }
+    });
+    const d9 = dom9.window.document;
+    const $9 = (s) => d9.querySelector(s);
+    await new Promise((r) => setTimeout(r, 320));
+
+    eq(d9.querySelector('.ml-list').textContent.indexOf('农历'), -1, '列表里没有农历');
+    eq($9('.ml-hero-meta').textContent.indexOf('农历'), -1, '置顶卡片没有农历');
+    ok(/^\d{4}-\d{2}-\d{2}$/.test($9('.ml-item-sub').textContent.split(' · ')[0]), '列表日期只剩公历：' + $9('.ml-item-sub').textContent);
+
+    // 详情：日期行没有农历，也没有单独的「农历」行
+    $9('.ml-item[data-id="s2"]').click();
+    await new Promise((r) => setTimeout(r, 200));
+    const rows9 = () => Array.from(d9.querySelectorAll('#mlDetailBody .ml-detail-row'));
+    const rowOf9 = (k) => {
+      const hit = rows9().find((r) => r.querySelector('.ml-detail-k').textContent === k);
+      return hit ? hit.querySelector('.ml-detail-v').textContent : null;
+    };
+    eq(rowOf9('农历'), null, '详情没有农历行');
+    ok(rowOf9('目标日期').indexOf('农历') === -1, '详情日期行没有农历：' + rowOf9('目标日期'));
+    ok(/2027-01-01/.test(rowOf9('目标日期')), '详情只给公历日期：' + rowOf9('目标日期'));
+    $9('#mlDetailBack').click();
+    await new Promise((r) => setTimeout(r, 380));
+
+    // 表单：历法与农历控件整块不出现
+    $9('#mlAdd').click();
+    await new Promise((r) => setTimeout(r, 200));
+    eq($9('#fCalendarWrap').hidden, true, '没有历法切换（只剩公历）');
+    eq($9('#fSolarWrap').hidden, false, '公历日期照常可选');
+    eq($9('#fLunarWrap').hidden, true, '没有农历日期控件');
+    // 节日预设：只有公历分组 + 自定义，农历与节气不出现
+    d9.querySelector('#fKind button[data-v="festival"]').click();
+    await new Promise((r) => setTimeout(r, 60));
+    eq(d9.querySelectorAll('#fPresets .ml-preset-group').length, 2, '预设只剩「公历」与「自定义」两组');
+    eq(d9.querySelectorAll('#fPresets .ml-preset').length, 8, '预设 = 7 个公历节日 + 自定义');
+    eq(d9.querySelector('#fPresets .ml-preset[data-k="chunjie"]'), null, '没有春节等农历预设');
+    eq(d9.querySelector('#fPresets .ml-preset[data-k="qingming"]'), null, '没有节气预设');
+    $9('#mlCancel').click();
+    await new Promise((r) => setTimeout(r, 380));
+
+    // 设置：开关默认关、可以点
+    $9('#mlSettings').click();
+    await new Promise((r) => setTimeout(r, 200));
+    eq($9('#sLunar').checked, false, '设置里农历开关是关的');
+    eq($9('#sLunar').disabled, false, '没有农历事项时可以自由切换');
+    eq($9('#sLunar').closest('.ml-field').querySelector('.ml-switch-row span').textContent,
+      '启用农历系统', '开关文案是「启用农历系统」');
+    eq($9('#sLunarHint').hidden, true, '没锁住时不挂说明文字（不再讲日期格式）');
+
+    // 打开 → 日期变成「公历（农历）」，农历预设回来，设置写入同步数据
+    $9('#sLunar').click();
+    await new Promise((r) => setTimeout(r, 400));
+    eq(JSON.parse(dom9.window.__STORE__).settings.lunar, true, '打开状态写入同步数据');
+    ok(d9.querySelector('.ml-list').textContent.indexOf('农历') !== -1, '打开后列表出现农历');
+    ok($9('.ml-hero-meta').textContent.indexOf('（农历') !== -1, '打开后置顶卡片是「公历（农历）」：' + $9('.ml-hero-meta').textContent);
+    ok(/^\d{4}-\d{2}-\d{2}（农历/.test($9('.ml-item-sub').textContent), '公历来源的记录写作「公历（农历）」：' + $9('.ml-item-sub').textContent);
+
+    $9('#mlSetClose').click();
+    await new Promise((r) => setTimeout(r, 420));
+    $9('#mlAdd').click();
+    await new Promise((r) => setTimeout(r, 200));
+    eq($9('#fCalendarWrap').hidden, false, '打开后表单又有历法可选');
+    d9.querySelector('#fKind button[data-v="festival"]').click();
+    await new Promise((r) => setTimeout(r, 60));
+    eq(d9.querySelectorAll('#fPresets .ml-preset-group').length, 4, '打开后预设恢复四组（公历/农历/节气/自定义）');
+    ok(!!d9.querySelector('#fPresets .ml-preset[data-k="chunjie"]'), '打开后又有春节');
+    $9('#mlCancel').click();
+    await new Promise((r) => setTimeout(r, 380));
+    dom9.window.close();
+  }
+
+  console.log('[25] 有农历事项时不允许关闭农历');
+  {
+    const seed = {
+      version: 1,
+      settings: { lang: 'zh', lunar: true },
+      events: [
+        { id: 'l1', title: '妈妈', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
+          lunar: { year: 1968, month: 4, day: 18, isLeap: false }, repeat: true, color: '#d6336c', note: '' }
+      ]
+    };
+    const domA = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(w) {
+        w.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w.__STORE__ = JSON.stringify(seed);
+        w.__SAVES__ = [];
+        w.PluginAPI = {
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(w.__STORE__); },
+          persistDataSynced(s) { w.__STORE__ = s; w.__SAVES__.push(s); return Promise.resolve(); },
+          openDialog() { return Promise.resolve('取消'); }
+        };
+      }
+    });
+    const dA = domA.window.document;
+    const $A = (s) => dA.querySelector(s);
+    await new Promise((r) => setTimeout(r, 320));
+
+    // 农历来源：农历在前，公历在后
+    ok(/^农历四月十八（\d{4}-\d{2}-\d{2}）$/.test($A('.ml-item-sub').textContent),
+      '农历来源的记录写作「农历（公历）」：' + $A('.ml-item-sub').textContent);
+    ok($A('.ml-hero-meta').textContent.indexOf('（') !== -1, '置顶卡片也是农历（公历）');
+
+    // 数据层自愈：库里写着 lunar:false 但有农历事项 → 仍按显示农历跑
+    const selfHeal = Core.normalize({ settings: { lunar: false }, events: seed.events });
+    eq(selfHeal.settings.lunar, true, '有农历事项时数据层强制为开');
+
+    $A('#mlSettings').click();
+    await new Promise((r) => setTimeout(r, 200));
+    eq($A('#sLunar').checked, true, '开关处于打开状态');
+    eq($A('#sLunar').disabled, true, '有农历事项时开关被锁住');
+    eq($A('#sLunarHint').hidden, false, '锁住时才显示说明');
+    ok($A('#sLunarHint').className.indexOf('warn') !== -1, '锁住时给出醒目说明');
+    ok($A('#sLunarHint').textContent.indexOf('1') !== -1, '说明里报出农历事项数量');
+
+    // 就算绕过 disabled 改值也不会关掉
+    const savesBefore = domA.window.__SAVES__.length;
+    $A('#sLunar').checked = false;
+    $A('#sLunar').dispatchEvent(new domA.window.Event('change'));
+    await new Promise((r) => setTimeout(r, 200));
+    eq($A('#sLunar').checked, true, '被改回打开');
+    eq(JSON.parse(domA.window.__STORE__).settings.lunar, true, '同步数据仍是打开');
+    eq(domA.window.__SAVES__.length, savesBefore, '没有产生写入');
+    ok($A('#mlToast').textContent.indexOf('无法关闭') !== -1, '给出「无法关闭」提示：' + $A('#mlToast').textContent);
+    domA.window.close();
   }
 
   console.log('[23] 无运行时错误');

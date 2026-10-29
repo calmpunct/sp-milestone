@@ -1,6 +1,10 @@
 const L = require('../src/lunar.js');
 const Core = require('../src/event-core.js');
 
+// 本文件默认按「显示农历」跑：农历相关的换算与文案是这里的主要考点。
+// 「关掉农历」的行为集中在 [12] 单独验证。
+Core.setLunar(true);
+
 let fail = 0;
 function eq(a, b, label) {
   if (a !== b) { fail++; console.log(`  ✗ ${label}: got ${JSON.stringify(a)}, want ${JSON.stringify(b)}`); }
@@ -168,10 +172,11 @@ eq(Core.ageAt(mom, null, TODAY), null, '没有发生日就不给年龄');
 
 // 16.2 生日标签显示「这次生日」的日期，而不是出生那天
 console.log('[7.0] 生日标签用发生日');
-ok(Core.dateLabel(mom, momOcc).indexOf('2027-05-14') === 0, '生日标签 = 下次生日日期');
+ok(Core.dateLabel(mom, momOcc).indexOf('2027-05-14') === 0, '生日标签 = 下次生日日期（公历在前）');
 ok(Core.dateLabel(kid, kidOcc).indexOf(Core.ymd(kidOcc.date)) === 0, '今年内的生日同样用发生日');
-ok(Core.dateLabel(lunarEv, Core.nextOccurrence(lunarEv, TODAY)).indexOf(Core.ymd(Core.nextOccurrence(lunarEv, TODAY).date)) === 0,
-  '农历生日也用发生日');
+const lunarOcc = Core.nextOccurrence(lunarEv, TODAY);
+ok(Core.dateLabel(lunarEv, lunarOcc).indexOf('农历四月十八') === 0, '农历生日以农历日期开头（农历在前）');
+ok(Core.dateLabel(lunarEv, lunarOcc).includes(Core.ymd(lunarOcc.date)), '农历生日的括号里是这次生日的公历日期');
 ok(Core.dateLabel(mom).indexOf('1971-05-14') === 0, '没给发生日时回落到原始日期');
 
 const ann = mk({ title: '结婚纪念日', kind: 'anniversary', date: '2018-06-16' });
@@ -304,7 +309,7 @@ const oldShape = Core.normalize({
 eq(oldShape.events[0].remind.task, true, '旧 on 被忽略，按缺省加入任务列表');
 eq(oldShape.events[0].remind.snack, false, '旧 on 不会打开提示条');
 eq(oldShape.events[0].remind.offsets.join(','), '0,3', '合法档位仍被保留');
-eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,taskTag', 'settings 只有语言、标签名与置顶开关');
+eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,lunar,taskTag', 'settings 只有语言、标签名、置顶与农历开关');
 eq('taskProject' in oldShape.settings, false, '旧的项目名已迁出：任务改落收件箱 + 标签');
 eq(oldShape.settings.taskTag, 'milestone', '标签名默认 milestone');
 eq(Core.normalize({ settings: { taskTag: '  ' } }).settings.taskTag, 'milestone', '空白标签名回落到默认值');
@@ -490,6 +495,45 @@ eq(JSON.stringify(Core.anniversarySpan(annLunar, TODAY)), '{"years":1,"days":16}
 eq(Core.anniversaryYears(Object.assign({}, annLunar, {
   lunar: { year: 2025, month: 9, day: 20, isLeap: false }
 }), TODAY), null, '农历纪念日：还没到农历同一天');
+
+// 18. 农历显示开关（默认关；关掉后任何地方都不出现农历）
+console.log('[12] 农历显示开关');
+eq(Core.emptySettings().lunar, false, '农历默认关闭');
+eq(Core.normalize({}).settings.lunar, false, '没有这项设置时按下关闭');
+eq(Core.normalize({ settings: { lunar: true } }).settings.lunar, true, '打开状态保留');
+eq(Core.normalize({ settings: { lunar: 'yes' } }).settings.lunar, false, '非布尔真值不算打开');
+
+const solarEv = mk({ title: '项目上线', kind: 'countdown', date: '2026-11-02', repeat: false });
+const lunarData = Core.normalize({
+  settings: { lunar: false },
+  events: [{ title: '妈妈', kind: 'birthday', calendar: 'lunar', lunar: { year: 1968, month: 4, day: 18 }, date: '1968-05-14' }]
+});
+eq(lunarData.settings.lunar, true, '有农历事项时数据层自愈为「显示农历」（不允许关成空壳）');
+eq(Core.countLunarEvents(lunarData.events), 1, '数出 1 个农历事项');
+eq(Core.hasLunarEvents(lunarData.events), true, '判定有农历数据');
+eq(Core.countLunarEvents([solarEv]), 0, '公历事项不算农历数据');
+eq(Core.countLunarEvents(null), 0, '空数据不崩');
+
+// 打开：按录入历法决定谁在前
+const d0 = new Date(2026, 4, 12);
+const lun0 = L.lunarText(L.solarToLunar(d0).month, L.solarToLunar(d0).day, L.solarToLunar(d0).isLeap);
+eq(Core.dateText(d0, 'solar', {}), '2026-05-12（' + lun0 + '）', '公历来源：公历（农历）');
+eq(Core.dateText(d0, 'lunar', {}), lun0 + '（2026-05-12）', '农历来源：农历（公历）');
+ok(Core.dateText(d0, 'solar', { week: true }).indexOf('2026-05-12 · 周') === 0, '详情格式带星期');
+ok(Core.dateText(d0, 'solar', { cn: true }).indexOf('5月12日 周') === 0, '置顶卡用「5月12日 周X」短格式');
+eq(Core.dateText(null, 'solar', {}), '', '空日期返回空串');
+ok(Core.dateLabel(lunarEv, Core.nextOccurrence(lunarEv, TODAY)).indexOf('农历四月十八') === 0, '农历来源的列表文案以农历开头');
+
+// 关掉：只剩公历，干支生肖一并收起
+Core.setLunar(false);
+eq(Core.dateText(d0, 'solar', {}), '2026-05-12', '关掉后公历来源只剩公历');
+eq(Core.dateText(d0, 'lunar', {}), '2026-05-12', '关掉后农历来源也只剩公历');
+eq(Core.dateLabel(lunarEv), '1990-05-12', '关掉后农历记录的列表文案没有农历');
+eq(Core.dateLabel(lunarEv, Core.nextOccurrence(lunarEv, TODAY)).indexOf('农历'), -1, '关掉后生日标签也不带农历');
+ok(Core.dateLabel(mk({ date: '1990-05-12' })).indexOf('（') === -1, '关掉后公历记录没有括号对照');
+eq(Core.zodiacLabel(lunarEv), '', '关掉后不显示干支生肖');
+eq(Core.dateLabel(qmEv), '2026-04-05 · 清明', '节气记录与开关无关（它本来就走公历）');
+Core.setLunar(true);
 
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

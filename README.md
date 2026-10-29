@@ -2,22 +2,23 @@
 
 **中文** · [English](#milestones)
 
-Super Productivity 插件。管理倒数日、纪念日、生日和节日，**支持农历换算与预设节日**，数据随应用同步在设备间流转；界面中英双语，**默认跟随软件的语言设置**。
+Super Productivity 插件。管理倒数日、纪念日、生日和节日，数据随应用同步在设备间流转；界面中英双语，**默认跟随软件的语言设置**。农历换算做成了**可关的开关（默认关）**，不用农历的人在界面上看不到任何农历元素。
 
 ## 功能
 
 | 能力 | 说明 |
 | --- | --- |
 | 四种类型 | 生日、纪念日、倒数日、节日，各自有独立的计时语义 |
-| 预设节日 | 18 个常用节日按公历 / 农历 / 节气分组，**可多选一次批量添加**；也可自定义节日 |
+| 预设节日 | 常用节日按公历 / 农历 / 节气分组，**可多选一次批量添加**；也可自定义节日（农历与节气分组随农历开关出现） |
 | 两种时间口径 | 倒数与生日显示**剩余天数**（橙黄），纪念日显示**已过天数**（蓝绿） |
 | 时间排序 | 倒数越近越靠上，已过的越久越靠上；顶栏下的置顶卡片取当前分区的第一条 |
 | 置顶卡片 | 可在设置里关掉，关掉后列表直接贴顶，一屏多看几条 |
-| 农历支持 | 农历生日/纪念日自动换算，每次打开都是当年对应的公历日期 |
+| 农历开关 | 设置里「历法 → 启用农历系统」，**默认关闭**。关闭时界面、表单、节日预设里都没有农历；打开后日期按来源写作「公历（农历）」或「农历（公历）」 |
+| 农历支持 | 打开后，农历生日 / 纪念日自动换算，每次打开都是当年对应的公历日期 |
 | 到期提醒进任务列表 | 每个事项可以单独选择是否生成任务；打开就插入相关任务，关闭就删除相关任务 |
 | 到期弹窗提醒 | 每个事项可以单独选择：到期弹窗提醒。与任务列表互不影响 |
 | 归档 | 每个事项可归档：不在「全部」里显示，也不再提醒；筛选条最右边的「归档」就是归档视图的入口 |
-| 详情页 | 点条目先看详情（天数、农历、下次发生、提醒、备注一屏看全），右上角「编辑」才进表单 |
+| 详情页 | 点条目先看详情（天数、那个日子、下一次什么时候、提醒、备注一屏看全），右上角「编辑」才进表单 |
 | 备注 | 每个事项可写 200 字备注；详情页下方单独成块显示，手动换行原样保留 |
 | 跨设备同步 | 依赖应用自身的同步通道，桌面 / 移动端 / 网页数据一致 |
 
@@ -29,7 +30,7 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，**�
 
 1. 打开 Super Productivity → `设置` → `插件`
 2. 点击 `Choose Plugin File`（选择插件文件）
-3. 选中 `releases/sp-milestone-v1.0.4.zip`
+3. 选中 `releases/sp-milestone-v1.1.0.zip`
 4. 安装后，需要**开启插件**，左侧导航出现 `Milestone` 入口（入口名固定不翻译，见文末「命名约定」）
 
 > 不需要解压 ZIP。网页版因浏览器跨域限制无法自动下载，请手动下载 ZIP 后用同样方式安装。
@@ -37,12 +38,15 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，**�
 ## 使用
 
 - 点击右上角「添加」，选择类型、历法、日期（**名称必填**，空名称不会保存）；右边的齿轮是设置
-- 选择「农历」后，用年 / 月 / 日三个下拉框指定农历日期，下方会实时显示对应公历、干支与生肖
-- **点任意条目先进入详情页**（只读）：顶部是与列表置顶卡**同一套大卡片**（「距离…还有 / 已经走过」+ 天数 + 周期进度条），下面依次是日期、农历、下次发生（倒数日还有重复口径）、提醒；归档的事项末尾多一行「状态：已归档」。类型与历法不再单列 —— 前者在卡片标签上，后者由日期 / 农历两行自明。要点右上角「编辑」才会打开表单，改完保存仍停在详情，点左上角「返回」回列表
+- **农历是设置里的一项开关，默认关闭**：关闭时界面里不出现任何农历（只有公历日期，表单里没有「历法」，节日预设只剩公历分组）；打开后，选择「农历」用年 / 月 / 日三个下拉框指定农历日期，下方会实时显示对应公历、干支与生肖
+- 打开农历后，日期按**录入时的历法**决定顺序：公历录入的写「2026-05-12（农历四月初五）」，农历录入的写「农历四月初五（2026-05-12）」
+- **已经有农历事项时不能关闭农历开关**：关掉会让这些记录只剩公历、也改不了历法，所以设置里会锁住开关并说明原因；删掉这些事项后即可关闭
+- **点任意条目先进入详情页**（只读）：顶部是与列表置顶卡**同一套大卡片**（「距离…还有 / 已经走过」+ 天数 + 周期进度条），下面的信息行按类型说人话 —— 日期那一行的叫法随类型走（生日「出生日期」、纪念日「那一天」、倒数日「目标日期」、节日「节日日期」），生日下面再给一行「N岁生日」、纪念日再给一行「N 周年时间」并附「已过 / 已满」；归档的事项末尾多一行「状态：已归档」。类型不再单列 —— 它在卡片标签上。要点右上角「编辑」才会打开表单，改完保存仍停在详情，点左上角「返回」回列表
+- **进度条只给生日和纪念日**：两者都是一年一轮，可以画「本周年已过 / 还剩」；节日与倒数日只有「还有 N 天」一个语义，不画进度条
 - 在详情页里可以删除（编辑表单底部的「删除该事项」）
 - 顶部筛选条可按类型过滤；**「归档」是单独一个视图**
 
-**关于节日**：类型选「节日」后，表单会多出一块「预设节日」选择区，分三组：
+**关于节日**：类型选「节日」后，表单会多出一块「预设节日」选择区，分三组（**农历与节气两组只在打开农历开关后出现**）：
 
 | 分组 | 节日 | 日期来源 |
 | --- | --- | --- |
@@ -118,7 +122,8 @@ ml:ev=e1;cy=2027-05-14
 - **卸载插件不会清理已生成的任务**：卸载/禁用后任务会留在收件箱里（带 `milestone` 标签）。卸载前把各个事项的「加入任务列表」关掉，或卸载后按标签 `milestone` 一次性清理
 - **老任务留在旧项目里**：1.0.1 及更早版本把任务建在「里程碑提醒」项目里。宿主没有安全的「把任务搬到另一个项目」接口（直接改 `projectId` 会与项目侧的 `taskIds` 对不上），所以升级后**只给老任务补上 `milestone` 标签、不搬项目**；想让它们全部落到收件箱，删掉那个旧项目即可，插件会在下一轮对账时按收件箱 + 标签重建
 - **提醒不会主动推送**：任务列表方式下任务会按时出现在列表里，但「到点弹通知」仍需应用在运行；插件没有系统级后台推送与常驻能力（宿主设计限制）
-- 农历数据覆盖 **1900–2100** 年。超出范围的日期显示「超出可算年限」，不会崩溃
+- 农历数据覆盖 **1900–2100** 年。超出范围时不会崩溃：日期只显示公历（列表里的天数位置仍会标「超出可算年限」）
+- **农历开关与数据联动**：只要库里还有农历事项，开关就锁在「开」且不可关闭（数据层也会把设置自愈为开），避免出现「有农历数据但界面上看不见、也改不了」的状态；删掉这些事项后即可自由关闭
 - 农历换算采用 1900-01-31 为基准的累积天数查表算法，已用 73,384 天逐日往返校验、201 个农历年天数校验
 - 任务备注里的 `ml:ev=…` 标记是识别依据；跨设备时如果备注被清空，可能会多出一条重复任务（下次对账会删掉多余的那条）
 - 任务同步需要宿主提供任务 API（`getAppState` / `addTask` / `updateTask` / `deleteTask`）。
@@ -131,18 +136,19 @@ ml:ev=e1;cy=2027-05-14
 
 [中文](#里程碑) · **English**
 
-A Super Productivity plugin for countdowns, anniversaries, birthdays and festivals, with **lunar-calendar conversion and preset festivals**. Data syncs across devices through the app's own channel; the UI is bilingual (Chinese / English) and **follows the app language by default**.
+A Super Productivity plugin for countdowns, anniversaries, birthdays and festivals. Data syncs across devices through the app's own channel; the UI is bilingual (Chinese / English) and **follows the app language by default**. Lunar-calendar support is a **switch that is off by default**, so anyone who does not use it sees no lunar element at all.
 
 ## Features
 
 | Capability | Description |
 | --- | --- |
 | Four types | Birthday, anniversary, countdown and festival, each with its own time semantics |
-| Preset festivals | 18 common festivals grouped by Gregorian / lunar / solar term, **multi-select to add in one go**; custom festivals supported |
+| Preset festivals | Common festivals grouped by Gregorian / lunar / solar term, **multi-select to add in one go**; custom festivals supported (the lunar and solar-term groups appear once the lunar switch is on) |
 | Two time metrics | Countdowns and birthdays show **days left** (amber), anniversaries show **days passed** (teal) |
 | Sorting | Sooner countdowns on top, older anniversaries on top; the featured card takes the first entry of the current category |
 | Featured card | Can be switched off in settings, then the list starts at the very top |
-| Lunar support | Lunar birthdays / anniversaries are converted automatically, so every launch shows this year's Gregorian date |
+| Lunar switch | **Off by default.** Off: no lunar anywhere (list, details, form, presets). On: dates read "Gregorian (lunar)" or "lunar (Gregorian)" depending on how the entry was entered |
+| Lunar support | With the switch on, lunar birthdays / anniversaries are converted automatically, so every launch shows this year's Gregorian date |
 | Reminders as tasks | Every entry decides on its own whether to create a task; on = inserted, off = deleted |
 | Snackbar reminder | Every entry decides on its own whether to get a snackbar when due; independent of the task list |
 | Archive | Entries can be archived: hidden from "All" and no longer reminded; the "Archive" chip at the right end of the filter bar is the entry point |
@@ -156,7 +162,7 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 
 1. Open Super Productivity → `Settings` → `Plugins`
 2. Click `Choose Plugin File`
-3. Select `releases/sp-milestone-v1.0.4.zip`
+3. Select `releases/sp-milestone-v1.1.0.zip`
 4. After installing, **enable the plugin** — a "Milestone" entry appears in the left navigation
 
 > No need to unzip. The web version cannot download automatically because of browser CORS rules — download the ZIP manually and install it the same way.
@@ -164,11 +170,13 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 ## Usage
 
 - Tap **Add** in the top-right corner, choose type, calendar and date (**name is required** — an empty name is not saved); the gear next to it opens settings
-- After choosing **Lunar**, pick year / month / day from the three selects; the matching Gregorian date, sexagenary cycle and zodiac are shown below in real time
+- **The lunar calendar is a switch in settings and is off by default**: while off there is no lunar element at all (Gregorian dates only, no "Calendar" row in the form, only the Gregorian preset group). While on, choosing **Lunar** lets you pick year / month / day from three selects and shows the matching Gregorian date, sexagenary cycle and zodiac below
+- With the lunar switch on, dates follow **the calendar they were entered with**: a Gregorian entry reads "2026-05-12 (lunar month 4, day 5)", a lunar entry reads "lunar month 4, day 5 (2026-05-12)"
+- **The switch cannot be turned off while lunar entries exist** — they would only show the Gregorian date and their calendar could no longer be edited, so settings locks the switch and says why; delete those entries to turn it off
 - Tap any card to edit or delete it
 - The filter bar on top filters by type; **"Archive" is a separate view**
 
-**About festivals**: with type = Festival, the form shows a "Preset festivals" block in three groups:
+**About festivals**: with type = Festival, the form shows a "Preset festivals" block in three groups (**the lunar and solar-term groups only appear with the lunar switch on**):
 
 | Group | Festivals | Date source |
 | --- | --- | --- |

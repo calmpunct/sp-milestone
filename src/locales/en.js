@@ -58,6 +58,8 @@
     'group.custom': "Custom",
     'term.qingming': "Qingming",
     'date.notSet': "Date not set",
+    // Gregorian and lunar folded into one phrase: {a} leads (the calendar it was entered with), {b} follows
+    'date.pair': "{a} ({b})",
     // age in the suffix = how old the person turns on the upcoming birthday, not today's age
     'age.suffix': " (turning {n})",
     // the word "birthday" is appended by the UI; user titles ending with it are stripped
@@ -146,11 +148,13 @@
     // the label sentence above already says left/passed, so the unit is just "days"
     'hero.unitRemain': "days",
     'hero.unitElapsed': "days",
-    'hero.barDone': "{p}% of the cycle",
     // birthdays are drawn the other way round: what is left, shrinking as the day nears; {n} is today's age
     'hero.barLeft': "{p}% to go",
     'hero.barLeftAge': "{n} years old, {p}% to go",
-    'hero.barTotal': "365 days total",
+    // anniversaries count one round from the previous one to the next, i.e. a year
+    'hero.barCycle': "{p}% of the year passed",
+    // {n} is the real length of that round (lunar years and leap years differ from 365)
+    'hero.barTotal': "{n} days in total",
     'hero.emptyHint': "Tap \"Add\" to record your first date",
     'hero.emptyArchiveHint': "Archived entries are not featured",
 
@@ -165,10 +169,16 @@
 
     /* ---------------- details ---------------- */
     'detail.title': "Details",
-    'detail.date': "Date",
-    'detail.lunar': "Lunar",
-    'detail.next': "Next",
-    'detail.last': "Last",
+    // first info row: the same "date" means something else per kind
+    'detail.dateOf.birthday': "Born",
+    'detail.dateOf.anniversary': "The day",
+    'detail.dateOf.countdown': "Target date",
+    'detail.dateOf.festival': "Festival date",
+    // the upcoming occurrence + how many days left
+    'detail.bdayAge': "Turning {n}",
+    'detail.bdayNext': "Next birthday",
+    'detail.annAge': "Year {n}",
+    'detail.annNext': "Next anniversary",
     'detail.span': "Elapsed",
     'detail.remind': "Reminders",
     'detail.status': "Status",
@@ -258,6 +268,10 @@
     'set.hero': "Featured card",
     'set.heroToggle': "Enlarge the first entry",
     'set.heroHint': "Enlarges the first entry of <b>the current category</b>; when off the list starts at the top.",
+    // group title says "Calendar"; the switch itself says "Enable the lunar calendar"
+    'set.lunar': "Calendar",
+    'set.lunarToggle': "Enable the lunar calendar",
+    'set.lunarLocked': "{n} lunar entries exist, so this cannot be turned off — they would only show the Gregorian date and their calendar could no longer be edited. Delete them first.",
     'set.data': "Data",
     'set.clear': "Clear Milestone data cache",
     'set.clearHint': "For wrong data, duplicate tasks or bad dates. Clears every entry and setting and removes this plugin's tasks — <b>other tasks stay</b>.",
@@ -288,6 +302,7 @@
     'toast.pickDate': "Please pick a date",
     'toast.pickFestival': "Please pick a festival",
     'toast.batch': "Added {n} festivals",
+    'toast.lunarLocked': "Lunar entries exist — cannot turn it off",
     saveN: "Add {n}",
   };
 });

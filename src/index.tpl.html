@@ -222,6 +222,19 @@
       </div>
 
       <div class="ml-field">
+        <span class="ml-label" data-i18n="set.lunar"></span>
+        <div class="ml-switch-row">
+          <span data-i18n="set.lunarToggle"></span>
+          <label class="ml-switch">
+            <input type="checkbox" id="sLunar">
+            <i></i>
+          </label>
+        </div>
+        <!-- 平时不显示；只有「还有农历事项、不能关」时由 app.js 填上原因并标红 -->
+        <p class="ml-hint warn" id="sLunarHint" hidden></p>
+      </div>
+
+      <div class="ml-field">
         <span class="ml-label" data-i18n="set.data"></span>
         <p class="ml-hint" id="sDataInfo"></p>
         <button type="button" class="ml-danger" id="sClear" data-i18n="set.clear"></button>

@@ -16,6 +16,14 @@
   var I = I18N;
   var lang = 'zh';
 
+  /**
+   * 农历显示开关（settings.lunar，默认关）。
+   * 关掉时任何地方都不出现农历：日期只留公历，干支生肖、农历日期控件、
+   * 农历与节气预设一并收起 —— 不用农历的人在界面上看不到任何相关元素。
+   * 由界面（app.js）与宿主脚本（plugin-main.js）按数据里的设置同步。
+   */
+  var showLunar = false;
+
   var DAY_MS = 86400000;
   var WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   var MONTH_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -111,6 +119,32 @@
     return lang;
   }
 
+  /**
+   * 打开 / 关闭农历显示
+   * @param {boolean} on
+   */
+  function setLunar(on) {
+    showLunar = on === true;
+  }
+
+  /**
+   * 数据里的农历事项数量。
+   * 大于 0 时不允许关掉农历显示：关掉之后这些记录在界面上既看不到农历日期，
+   * 也没法再改历法（农历控件是收起的），只能靠改数据才能救回来。
+   */
+  function countLunarEvents(events) {
+    var list = events || [];
+    var n = 0;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].calendar === 'lunar') n++;
+    }
+    return n;
+  }
+
+  function hasLunarEvents(events) {
+    return countLunarEvents(events) > 0;
+  }
+
   var FESTIVAL_MAP = null;
   function festivalByKey(key) {
     if (!FESTIVAL_MAP) {
@@ -200,7 +234,9 @@
       // 顶部是否放大显示当前分区的第一条
       hero: true,
       // 语言偏好：auto 跟随系统，或强制 zh / en
-      lang: 'auto'
+      lang: 'auto',
+      // 是否显示农历（默认关：不用农历的界面里一个农历元素都不出现）
+      lunar: false
     };
   }
 
@@ -222,6 +258,8 @@
       data.settings.hero = s.hero !== false;
       // 语言：只认 auto / zh / en，其余一律回到 auto（跟随系统）
       data.settings.lang = s.lang === 'en' || s.lang === 'zh' ? s.lang : 'auto';
+      // 农历显示：只有明确的 true 才算开（缺省、旧数据、坏值都是关）
+      data.settings.lunar = s.lunar === true;
     }
 
     var list = Array.isArray(raw.events) ? raw.events : [];
@@ -287,6 +325,9 @@
         createdAt: +e.createdAt || now
       };
     }).filter(Boolean);
+    // 有农历事项就必须开着农历显示：否则这些记录会被迫只显示公历，
+    // 界面上也没有农历控件可用（等于把数据藏起来）
+    if (!data.settings.lunar && hasLunarEvents(data.events)) data.settings.lunar = true;
     return data;
   }
 
@@ -645,32 +686,56 @@
     return info ? info.ratio : null;
   }
 
-  /** 「2027-05-12 · 农历四月十一」 */
-  function solarLunarText(d) {
-    var l = Lunar.solarToLunar(d);
-    return ymd(d) + ' · ' + Lunar.lunarText(l.month, l.day, l.isLeap);
+  /**
+   * 一个公历日期的展示文本：公历与农历合成一段，谁在前由「当初按哪个历法填的」决定
+   *   · 公历来源 → 「2026-05-12（农历四月初五）」  公历（农历）
+   *   · 农历来源 → 「农历四月初五（2026-05-12）」  农历（公历）
+   *   · 农历关闭 → 只有公历，不出现任何农历字样
+   * @param {Date} solar 公历日期
+   * @param {'solar'|'lunar'} source 这条记录是按哪种历法录入的
+   * @param {{week?:boolean, cn?:boolean}} [opts] week 带星期；cn 用「5月12日 周二」这种短格式
+   * @returns {string}
+   */
+  function dateText(solar, source, opts) {
+    if (!solar) return '';
+    var o = opts || {};
+    var head = o.cn ? cnDate(solar) : ymd(solar) + (o.week ? ' · ' + WEEK[solar.getDay()] : '');
+    if (!showLunar) return head;
+
+    var lf = Lunar.solarToLunar(solar);
+    // 超出农历查表年限（1900-2100）：只给公历，免得出现「腊月三十日第 500 天」这类脏值
+    if (lf.outOfRange) return head;
+    var lun = Lunar.lunarText(lf.month, lf.day, lf.isLeap);
+    return source === 'lunar'
+      ? I.t('date.pair', { a: lun, b: head })
+      : I.t('date.pair', { a: head, b: lun });
   }
 
   /**
-   * 事件的日期描述，如「1990-05-12 · 农历四月十八」
+   * 事件的日期描述，如「2026-05-12（农历四月初五）」/「农历四月初五（2026-05-12）」
    * 生日例外：列表里该显示的是「这次生日」的日期，出生那天对倒数没有意义
+   * @param {object} ev
+   * @param {object} [occ] nextOccurrence 的结果
+   * @param {{week?:boolean}} [opts]
    */
-  function dateLabel(ev, occ) {
-    var showOcc = ev.kind === 'birthday' && occ && occ.date;
+  function dateLabel(ev, occ, opts) {
+    var week = !!(opts && opts.week);
     if (ev.term && TERMS[ev.term]) {
       var td = (occ && occ.date) || termDate(ev.term, new Date().getFullYear());
       return (td ? ymd(td) + ' · ' : '') + TERMS[ev.term].name;
     }
-    if (ev.calendar === 'lunar' && ev.lunar) {
-      if (showOcc) return solarLunarText(occ.date);
-      var s = lunarToSolarOf(ev.lunar);
-      return (s ? ymd(s) + ' · ' : '') + Lunar.lunarText(ev.lunar.month, ev.lunar.day, ev.lunar.isLeap);
+    var showOcc = ev.kind === 'birthday' && occ && occ.date;
+    var d = showOcc ? occ.date : parseYMD(ev.date);
+    if (!d) {
+      // 公历日期缺失（只剩农历字段的导入数据）：农历关掉时也不能把农历漏出来
+      if (ev.calendar === 'lunar' && ev.lunar) {
+        return showLunar
+          ? Lunar.lunarText(ev.lunar.month, ev.lunar.day, ev.lunar.isLeap)
+          : I.t('date.notSet');
+      }
+      return I.t('date.notSet');
     }
-    if (showOcc) return solarLunarText(occ.date);
-    var b = parseYMD(ev.date);
-    if (!b) return I.t('date.notSet');
-    var l = Lunar.solarToLunar(b);
-    return ymd(b) + ' · ' + Lunar.lunarText(l.month, l.day, l.isLeap);
+    return dateText(d, ev.calendar, { week: week });
   }
 
   /**
@@ -715,9 +780,9 @@
     return out;
   }
 
-  /** 生肖/干支说明，仅农历生日有意义 */
+  /** 生肖/干支说明，仅农历生日有意义；农历显示关掉时整块收起 */
   function zodiacLabel(ev) {
-    if (ev.calendar !== 'lunar' || !ev.lunar) return '';
+    if (!showLunar || ev.calendar !== 'lunar' || !ev.lunar) return '';
     return I.t('zodiac.label', { gz: Lunar.ganzhiOf(ev.lunar.year), z: Lunar.zodiacOf(ev.lunar.year) });
   }
 
@@ -742,6 +807,9 @@
     TERMS: TERMS,
     setLang: setLang,
     getLang: getLang,
+    setLunar: setLunar,
+    countLunarEvents: countLunarEvents,
+    hasLunarEvents: hasLunarEvents,
     festivalByKey: festivalByKey,
     festivalFields: festivalFields,
     termDate: termDate,
@@ -770,6 +838,7 @@
     dueReminders: dueReminders,
     cycleInfo: cycleInfo,
     cycleProgress: cycleProgress,
+    dateText: dateText,
     dateLabel: dateLabel,
     zodiacLabel: zodiacLabel,
     eventsOn: eventsOn

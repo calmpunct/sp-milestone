@@ -12,6 +12,24 @@
   /** 当前语言下的文案 */
   function t(key, vars) { return I.t(key, vars); }
 
+  /** 农历显示开关（settings.lunar，默认关）：关掉时界面里不出现任何农历元素 */
+  function lunarOn() {
+    return !!(state.data.settings && state.data.settings.lunar);
+  }
+
+  /** 数据里的农历事项数：大于 0 时不允许关掉农历显示 */
+  function lunarCount() {
+    return Core.countLunarEvents(state.data.events);
+  }
+
+  /**
+   * 把数据里的显示设置交给核心层：日期文案（公历 + 农历的合并格式）由核心层拼，
+   * 列表、置顶卡、详情、提醒任务备注都走同一份，避免各处自己拼一套。
+   */
+  function syncCoreSettings() {
+    Core.setLunar(lunarOn());
+  }
+
   /** 类型名的复数形式（用于「6 个生日」这类计数） */
   function pluralOf(kind) {
     return t('plural.' + (Core.KINDS[kind] ? kind : 'generic'));
@@ -408,12 +426,28 @@
   }
 
   /**
+   * 哪些类型画进度条。
+   * 只有「一年一轮、两头都能锚住」的事项才有周期可言：
+   *   · 纪念日 → 上一个周年到下一个周年这一段
+   *   · 生日   → 同上，但反过来画（见下）
+   * 节日与倒数日不画：它们只讲「还有 N 天 / 已经过去 N 天」，没有可以对比的周期，
+   * 硬画一条「本年度已过 40%」既不对应用户关心的事，也和旁边的大数字对不上。
+   */
+  var BAR_KINDS = { birthday: true, anniversary: true };
+
+  /**
    * 进度条
    *   · 生日  → 画「还剩多少」：越接近生日，条越短（用户要的相反方向），
    *             文案带上此刻的年龄（「55岁还有 55%」），比标题里「这次生日几岁」少一岁
-   *   · 其余  → 画「本年度已过多少」：随时间变长
+   *   · 纪念日 → 画「本周年已过多少」：从上一个周年走到下一个周年，随时间变长
+   *   · 节日 / 倒数日 → 不画（见 BAR_KINDS）
    */
   function barOf(ev, occ, today) {
+    if (!BAR_KINDS[ev.kind]) return '';
+    // 那个日子还没到（纪念日可以录成未来的一天）：「本周年」还没开始，
+    // 拿上一个周年到下一个周年这一段去比会把条画成 80% 以上，容易被读成「快过完了」
+    var base = Core.parseYMD(ev.date);
+    if (base && Core.diffDays(Core.startOfDay(today || new Date()), base) > 0) return '';
     var info = Core.cycleInfo(ev, occ, today);
     if (!info) return '';
     var bday = ev.kind === 'birthday';
@@ -425,10 +459,12 @@
         ? t('hero.barLeft', { p: pct })
         : t('hero.barLeftAge', { n: age, p: pct });
     } else {
-      txt = t('hero.barDone', { p: pct });
+      txt = t('hero.barCycle', { p: pct });
     }
+    // 一周年的长度不是固定的 365 天（农历周年、闰年都会差几天），右边那格按实际周期写
     return '<div class="ml-bar' + (bday ? ' ml-bar--left' : '') + '"><i style="width:' + pct + '%"></i></div>' +
-      '<div class="ml-bar-text"><span>' + esc(txt) + '</span><span>' + esc(t('hero.barTotal')) + '</span></div>';
+      '<div class="ml-bar-text"><span>' + esc(txt) + '</span><span>' +
+        esc(t('hero.barTotal', { n: info.total })) + '</span></div>';
   }
 
   /**
@@ -557,13 +593,11 @@
     var unit = disp && disp.word ? '' : '<span>' + esc(t(remain ? 'hero.unitRemain' : 'hero.unitElapsed')) + '</span>';
     var num = '<div class="' + numCls + '">' + esc(disp ? disp.text : String(m.days)) + unit + '</div>';
 
-    var lf = L.solarToLunar(occ.date);
-    // 超出农历查表年限时不再显示换算结果，避免出现「腊月三十日第 500 天」这类脏值
-    var lunarMeta = lf.outOfRange ? esc(t('unit.overflow')) : L.lunarText(lf.month, lf.day, lf.isLeap);
+    // 日期在核心层拼成一段（公历 + 农历，农历关闭时只剩公历），
+    // 与列表、详情页同一套格式，不再各拼一份
     var meta = [
-      Core.cnDate(occ.date),
-      lunarMeta,
-      ageText(row)
+      esc(Core.dateText(occ.date, ev.calendar, { cn: true })),
+      esc(ageText(row))
     ].filter(Boolean).join('<i class="sep">·</i>');
 
     return '<div class="ml-hero-label">' + label + '</div>' +
@@ -723,6 +757,8 @@
 
   function renderAll() {
     var today = new Date();
+    // 先同步显示设置：日期文案在核心层拼，必须在渲染前定好农历开/关
+    syncCoreSettings();
     var all = sortRows(computeRows(today));
     var active = all.filter(function (r) { return !r.ev.archived; });
     var archivedCount = all.length - active.length;
@@ -780,26 +816,15 @@
   }
 
   /**
-   * 记录的农历说明：农历记录用存下来的月日（那才是用户填的），
-   * 公历记录按公历日期换算。干支生肖只对农历记录有意义，公历记录不显示，
-   * 否则换算出来的年份容易被当成用户填的年份。
+   * 详情页第一行的日期文本（公历与农历合成一段）。
+   * 按录入时的历法排序（公历来源「公历（农历）」、农历来源「农历（公历）」），
+   * 干支生肖只对农历记录有意义，接在同一行末尾，不单起一行。
+   * 天数由调用方决定要不要挂（见 withDays）。
    */
-  function lunarLine(ev, base) {
-    var lf = null;
-    var y = 0;
-    if (ev.calendar === 'lunar' && ev.lunar) {
-      lf = { month: ev.lunar.month, day: ev.lunar.day, isLeap: !!ev.lunar.isLeap };
-      y = ev.lunar.year;
-    } else if (base) {
-      var s = L.solarToLunar(base);
-      if (!s.outOfRange) { lf = s; y = s.year; }
-    }
-    if (!lf) return '';
-    var txt = L.lunarText(lf.month, lf.day, lf.isLeap);
-    if (ev.calendar === 'lunar' && y) {
-      txt += ' · ' + t('zodiac.label', { gz: L.ganzhiOf(y), z: L.zodiacOf(y) });
-    }
-    return txt;
+  function firstDateText(ev, d) {
+    var txt = Core.dateText(d, ev.calendar, { week: true });
+    var z = Core.zodiacLabel(ev);
+    return z ? txt + ' · ' + z : txt;
   }
 
   /** 提醒渠道与档位的人话描述，如「提前 1 天、当天 · 加入任务列表」 */
@@ -819,17 +844,31 @@
   }
 
   /** 剩余 / 已过天数说成人话（三天内用「今天 / 明天 / 后天」） */
-  function metricLine(m, remain, disp) {
-    if (m.mode === 'none') return '';
+  function metricLine(m, remain) {
+    if (!m || m.mode === 'none') return '';
     if (remain && m.days === 0) return t('detail.todayLeft');
     if (!remain && m.days === 0) return t('detail.todayPast');
     return t(remain ? 'detail.daysLeft' : 'detail.daysPast', { n: m.days });
   }
 
-  function detailHtml(ev, occ, m, span, name, today) {
+  /** 把天数接在日期后面（「… · 还有 100 天」）；没有可说的天数就原样返回 */
+  function withDays(txt, days, remain) {
+    var line = metricLine({ mode: remain ? 'remaining' : 'elapsed', days: days }, remain);
+    return line ? txt + ' · ' + line : txt;
+  }
+
+  /**
+   * 详情页第一个信息行的标签。
+   * 同一个「日期」在四种类型里说的不是一回事，笼统写「日期」用户得自己猜是哪一头：
+   *   生日 = 出生那天 / 纪念日 = 那一天 / 倒数日 = 目标日 / 节日 = 节日当天
+   */
+  function firstDateLabel(kind) {
+    return t('detail.dateOf.' + (Core.KINDS[kind] ? kind : 'countdown'));
+  }
+
+  function detailHtml(ev, occ, m, span, name, today, age) {
     var rgb = hexToRgb(ev.color).join(',');
     var remain = m.mode === 'remaining';
-    var disp = remain ? remainDisplay(m.days) : null;
 
     var tags = '<span class="ml-tag">' + esc(Core.KINDS[ev.kind]) + '</span>';
     if (ev.archived) {
@@ -839,30 +878,53 @@
     }
 
     // 信息行：一律纯文本，拼接时统一 esc
-    // 类型交给卡片顶部的标签、历法由「日期 / 农历」两行自明，不再各占一行
+    // 类型交给卡片顶部的标签；这里只说「这条记录对应的那个日子」和「下一次是什么时候」
     var base = Core.parseYMD(ev.date);
     var rows = [];
-    if (base) {
-      var dateTxt = dateWithWeek(base);
-      if (ev.term && Core.TERMS[ev.term]) dateTxt += ' · ' + Core.TERMS[ev.term].name;
-      rows.push([t('detail.date'), dateTxt]);
+
+    // 第一行是这条记录自己的那个日子。叫法随类型走（firstDateLabel）：
+    //   生日 = 出生那天（不是下一次生日）、纪念日 = 起算那天、倒数日 = 目标日
+    //   节日与滚动倒数日看「下一次」那天 —— 存下来的日期是新建时算的，过了那天就旧了
+    var roll = ev.kind === 'countdown' || ev.kind === 'festival';
+    var first = roll ? ((occ && occ.date) || base) : base;
+    if (first) {
+      // 日期 + 干支生肖（农历记录才有）已经在 firstDateText 里拼好
+      var firstTxt = firstDateText(ev, first);
+      // 节气名只有节日会有（term），接在日期末尾
+      if (ev.term && Core.TERMS[ev.term]) firstTxt += ' · ' + Core.TERMS[ev.term].name;
+      // 天数跟着日期一起说：倒数日「还有 N 天」，纪念日「已过 N 天」，节日同样要倒数
+      if (ev.kind === 'festival') {
+        if (m.mode === 'remaining') firstTxt = withDays(firstTxt, m.days, true);
+      } else if (ev.kind === 'countdown' || ev.kind === 'anniversary') {
+        firstTxt = withDays(firstTxt, m.days, remain);
+      }
+      rows.push([firstDateLabel(ev.kind), firstTxt]);
     }
-    var lunarTxt = lunarLine(ev, base);
-    if (lunarTxt) rows.push([t('detail.lunar'), lunarTxt]);
-    // 纪念日与已过期的倒数日，「上次」要指向起算那天（metric.date），而不是下一次发生日：
-    // 否则会出现「2027-06-16 · 已过 3057 天」这种未来日期配过去天数
-    var whenDate = m.date || (occ && occ.date);
-    if (whenDate) {
-      var nextTxt = dateWithWeek(whenDate);
-      var mline = metricLine(m, remain, disp);
-      if (mline) nextTxt += ' · ' + mline;
-      rows.push([t(remain ? 'detail.next' : 'detail.last'), nextTxt]);
-    }
+
+    // 纪念日的时间轴按「那一天 → 已满 → 下一个周年」读：先认起点，再说走了多久，最后说下一个节点
     if (ev.kind === 'anniversary' && span) {
       rows.push([t('detail.span'), span.days > 0
         ? t('years.nDays', { n: span.years, d: span.days })
         : t('years.n', { n: span.years })]);
     }
+
+    // 下一次那天 + 还有多少天（生日第二行、纪念日第三行）
+    //   生日   「3岁生日：2027-10-07 · 周四 · 还有 343 天」
+    //   纪念日 「3 周年时间：2027-06-06 · 周日 · 还有 220 天」
+    // 天数取 occ.days 而不是 metric.days：纪念日的 metric 说的是起算那天到今天，
+    // 这一行要的是「离下一个周年还有多久」，两者方向相反。
+    // 日期还没到（那天在未来）时下一次就是它自己，与上一行同一个日子，不再重复说一遍。
+    var sameDay = !!(base && occ && occ.date && Core.diffDays(base, occ.date) === 0);
+    if ((ev.kind === 'birthday' || ev.kind === 'anniversary') && occ && occ.date && !sameDay) {
+      var nextTxt = withDays(dateWithWeek(occ.date), occ.days, true);
+      if (ev.kind === 'birthday') {
+        rows.push([age == null ? t('detail.bdayNext') : t('detail.bdayAge', { n: age }), nextTxt]);
+      } else {
+        var nth = Core.yearsSince(ev, occ);
+        rows.push([nth ? t('detail.annAge', { n: nth }) : t('detail.annNext'), nextTxt]);
+      }
+    }
+
     // 倒数日的「过期后重新开始倒数」原本挂在状态行上，状态行去掉后单独成行，信息不能丢
     if (ev.kind === 'countdown') {
       rows.push([t('detail.repeat'), ev.repeat ? t('repeat.on') : t('repeat.off')]);
@@ -903,12 +965,16 @@
     if (!state.detailId) return;
     var ev = detailEvent();
     if (!ev) { closeDetail(); return; }
+    // 详情可能单独刷新（打开、保存、切语言），这里也要保证核心层拿到当前的农历设置
+    syncCoreSettings();
     var today = new Date();
     var occ = Core.nextOccurrence(ev, today);
     var m = metricOf(ev, occ, today);
     var span = ev.kind === 'anniversary' ? Core.anniversarySpan(ev, today) : null;
-    var name = Core.titleOf(ev, Core.ageAt(ev, occ, today));
-    $('#mlDetailBody').innerHTML = detailHtml(ev, occ, m, span, name, today);
+    // 「3岁生日」这一行的数字：下次生日那天的周岁，不是今天多大
+    var age = Core.ageAt(ev, occ, today);
+    var name = Core.titleOf(ev, age);
+    $('#mlDetailBody').innerHTML = detailHtml(ev, occ, m, span, name, today, age);
   }
 
   /**
@@ -1125,7 +1191,10 @@
   /** 预设按钮按 公历 / 农历 / 节气 分组渲染，末尾是「自定义」 */
   function buildPresets() {
     var html = '';
+    // 农历关闭时不摆农历与节气预设：选了它们就会造出一条农历记录，
+    // 而那时界面上连农历控件都没有，等于给自己挖坑
     ['solar', 'lunar', 'term'].forEach(function (g) {
+      if (g !== 'solar' && !lunarOn()) return;
       var items = Core.FESTIVALS.filter(function (f) { return f.group === g; });
       if (!items.length) return;
       html += '<div class="ml-preset-group">' + esc(Core.FESTIVAL_GROUPS[g]) + '</div>' +
@@ -1321,18 +1390,23 @@
   }
 
   function refreshCalendarRow() {
+    // 农历关掉时历法一行整块不出现：只剩公历，没什么可选的
+    var on = lunarOn();
     var cal = segValue('#fCalendar');
     var custom = isCustomDate();
     var multi = selectedPresets().length > 1;
     if ($('#fTitleWrap')) $('#fTitleWrap').hidden = multi;
     // 多选时每条用自己的节日配色，颜色选择器没有意义
     if ($('#fColorWrap')) $('#fColorWrap').hidden = multi;
-    $('#fCalendarWrap').hidden = !custom;
-    $('#fSolarWrap').hidden = !custom || cal !== 'solar';
-    $('#fLunarWrap').hidden = !custom || cal !== 'lunar';
+    $('#fCalendarWrap').hidden = !on || !custom;
+    $('#fSolarWrap').hidden = !custom || (on && cal === 'lunar');
+    $('#fLunarWrap').hidden = !on || !custom || cal !== 'lunar';
   }
 
   function fillSheet(d, isEdit) {
+    // 预设分组跟着农历开关走，每次开表单按当前设置重建一遍
+    // （load / 改设置时表单是关着的，重建只在这里做最稳妥）
+    buildPresets();
     $('#mlSheetTitle').textContent = isEdit ? t('sheet.edit') : t('sheet.new', { k: kindLower(d.kind) });
     $('#fTitle').value = d.title || '';
     markTitleInvalid(false);
@@ -1406,6 +1480,19 @@
     var st = state.data.settings || Core.emptySettings();
     $('#sHero').checked = st.hero !== false;
     setSeg('#sLang', st.lang || 'auto');
+
+    // 农历开关：数据里还有农历事项时锁死在「开」——
+    // 关掉之后这些记录在界面上只剩公历、也改不了历法，等于把数据藏起来
+    var lunarN = lunarCount();
+    var locked = lunarN > 0;
+    var sLunar = $('#sLunar');
+    sLunar.checked = st.lunar === true;
+    sLunar.disabled = locked;
+    // 平时不挂说明（日期怎么写是结果，不用在设置里教一遍）；只在锁住时把原因标红说清
+    var sLunarHint = $('#sLunarHint');
+    sLunarHint.hidden = !locked;
+    sLunarHint.className = locked ? 'ml-hint warn' : 'ml-hint';
+    sLunarHint.textContent = locked ? t('set.lunarLocked', { n: lunarN }) : '';
 
     var events = state.data.events || [];
     var archived = 0;
@@ -1554,7 +1641,8 @@
     // 名称只存人：年龄与「生日」二字都由界面拼，这里顺手把手动输入的那部分清掉
     var raw = $('#fTitle').value.trim().slice(0, 40);
     d.title = Core.cleanTitle(d.kind, raw) || raw;
-    d.calendar = segValue('#fCalendar') || 'solar';
+    // 农历关闭时只可能存公历（控件都不在了，别把残留的农历态写回去）
+    d.calendar = lunarOn() ? (segValue('#fCalendar') || 'solar') : 'solar';
     d.note = $('#fNote').value.trim().slice(0, 200);
     d.repeat = d.kind !== 'countdown' ? true : $('#fRepeat').checked;
     // 只有节日保留预设标识；切到别的类型时清掉，避免带着节气/预设走
@@ -1584,6 +1672,8 @@
       d.date = s ? Core.ymd(s) : '';
     } else {
       d.date = $('#fDate').value || '';
+      // 公历记录不存农历：留着只会让人以为「这条也有农历设置」
+      d.lunar = null;
     }
     return d;
   }
@@ -1925,6 +2015,17 @@
     });
     $('#sHero').addEventListener('change', function () {
       updateSetting('hero', this.checked);
+    });
+    // 有农历事项时不允许关（控件已 disabled，这里再兜一层：键盘/脚本改值同样拦下）
+    $('#sLunar').addEventListener('change', function () {
+      var want = this.checked;
+      if (!want && lunarCount() > 0) {
+        this.checked = true;
+        toast(t('toast.lunarLocked'));
+        refreshSettingsForm();
+        return;
+      }
+      updateSetting('lunar', want);
     });
     $('#sClear').addEventListener('click', function () {
       askClearData();

@@ -96,6 +96,10 @@ console.log(`     引用 ${used.size} 个静态键，基准语言共 ${baseKeys.
   ok('kindl.' + k in base, '动态键 kindl.' + k);
   ok('plural.' + k in base, '动态键 plural.' + k);
 });
+// 详情页第一个信息行的标签按类型拼（出生日期 / 那一天 / 目标日期 / 节日日期）
+['birthday', 'anniversary', 'countdown', 'festival'].forEach((k) => {
+  ok('detail.dateOf.' + k in base, '动态键 detail.dateOf.' + k);
+});
 for (let w = 0; w < 7; w++) ok('week.' + w in base, '动态键 week.' + w);
 // 预设节日：FESTIVALS 里的 key 必须有对应文案
 const Core = require('../src/event-core.js');
@@ -152,8 +156,15 @@ Core.setLang('en');
 eq(Core.KINDS.festival, 'Festival', '核心常量随语言切换（英文）');
 eq(Core.FESTIVALS.filter((f) => f.key === 'zhongqiu')[0].name, 'Mid-Autumn Festival', '节日名随语言切换');
 eq(Core.WEEK[1], 'Mon', '星期名随语言切换');
+// 农历文案只在「显示农历」时出现，这里先打开再验英文包
+Core.setLunar(true);
 ok(Core.dateLabel({ calendar: 'lunar', lunar: { month: 8, day: 15 }, date: '2026-09-25' }).indexOf('Lunar') !== -1,
   '农历文案切换成英文');
+eq(Core.dateText(new Date(2026, 8, 25), 'lunar', {}), 'Lunar month 8, day 15 (2026-09-25)', '英文的「农历（公历）」用半角括号');
+Core.setLunar(false);
+eq(Core.dateLabel({ calendar: 'lunar', lunar: { month: 8, day: 15 }, date: '2026-09-25' }), '2026-09-25',
+  '关掉农历后英文界面同样只剩公历');
+Core.setLunar(true);
 eq(Core.titleOf({ title: 'Mom', kind: 'birthday' }, 55), "Mom's birthday (turning 55)", '年龄后缀切换成英文');
 // 标签名是宿主机里的实体标识，必须与语言无关：否则切一次语言就多一个同名标签
 eq(Core.emptySettings().taskTag, 'milestone', '标签名不随语言变（英文）');

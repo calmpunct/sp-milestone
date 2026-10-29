@@ -89,6 +89,8 @@
     var l = I.resolve(settings && settings.lang, hostLang());
     I.setLang(l);
     EventCore.setLang(l);
+    // 农历显示开关也跟数据走：任务备注里的日期文案必须与界面里看到的一致
+    EventCore.setLunar(!!(settings && settings.lunar));
   }
 
   // 入口名称在注册时就要定，此时同步数据还没读回来，先按宿主语言给一个
@@ -187,10 +189,8 @@
 
       var data;
       if (!raw) {
-        applyLang(null);
         data = EventCore.normalize(null);
       } else if (!isStr) {
-        applyLang(raw.settings);
         data = EventCore.normalize(raw);
       } else {
         var parsed = null;
@@ -199,9 +199,11 @@
         } catch (e) {
           parsed = null;
         }
-        applyLang(parsed && parsed.settings);
         data = EventCore.normalize(parsed);
       }
+      // 归一化之后再应用设置：normalize 会把「数据里还有农历事项」的库强制标成
+      // 显示农历，用原始 settings 会让任务备注里少掉农历日期，与界面对不上
+      applyLang(data.settings);
       rawKey = key;
       rawValue = data;
       return data;
