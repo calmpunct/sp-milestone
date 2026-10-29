@@ -199,7 +199,7 @@ function buildIndexHtml() {
   // 内联脚本 / 样式里出现 </script>、</style> 或 <!-- 会把 HTML 提前截断，写盘前先拦住
   if (/<\/script|<!--/.test(js)) throw new Error('内联脚本含 </script> 或 <!--，会截断 HTML');
   if (/<\/style/i.test(css)) throw new Error('内联样式含 </style，会截断 HTML');
-  // 体积预算：宿主对 index.html 没有硬限制，1024KB 是本项目自定的上限。
+  // 体积预算：宿主对 index.html 有硬限制，上限是1024KB。
   // 靠近上限时先警告（多半是文案或语言包膨胀），超过则直接失败，避免打出装不动的包。
   const idxBytes = Buffer.byteLength(html, 'utf8');
   if (idxBytes > SIZE_WARN) {

@@ -130,8 +130,10 @@ ok(pkg.name === 'sp-' + manifest.id, 'package.json name = sp-<manifest.id>', pkg
 ok(pkg.version === manifest.version, 'package.json 版本与清单一致', pkg.version + ' vs ' + manifest.version);
 ok(readme.includes(zipName), 'README 提到的安装包名与构建派生一致', zipName);
 // 最低宿主版本：代码只按 19 的插件 API 写（getCurrentLanguage / onReady / onUnload），
-// 宿主会拿它做硬校验，低于此版本直接拒绝安装，所以 README 里的要求必须与清单同值
-ok(manifest.minSupVersion === '19.0.0', '最低宿主版本 19.0.0', manifest.minSupVersion);
+// 宿主会拿它做硬校验，低于此版本直接拒绝安装，所以 README 里的要求必须与清单同值。
+// 19.3.1 是本插件实测能用的下限：更低版本的宿主管线仍卡 index.html 的 100KB 上限，
+// 装到一半报「index.html 大于 100kb」，报错与版本无关、极易被当成包损坏。
+ok(manifest.minSupVersion === '19.3.1', '最低宿主版本 19.3.1', manifest.minSupVersion);
 ok(readme.includes(manifest.minSupVersion), 'README 写明的最低宿主版本与清单一致', manifest.minSupVersion);
 ok(!/countdown-days/.test(readme), 'README 里不再残留旧标识 countdown-days');
 ok(!/plugin-milestone/.test(readme), 'README 里不再残留旧标识 plugin-milestone');

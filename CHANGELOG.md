@@ -19,6 +19,9 @@
 - **语言包清理**：`snack.today / snack.tomorrow / snack.inDays / snack.more / snack.sep`、`form.remindSnack`、`detail.remindSnack`、`remind.hintBoth`、`remind.hintSnack` 中英双语一并删除；`remind.hintNone` 去掉「两个渠道都关着」的说法，`form.remindTask` 改成「在任务列表提醒我」（英文 `Remind me in the task list`），`detail.remindTask` 统一成「任务列表」
 - **本机缓存清理**：`app.js` 的 `HOST_KEYS` 去掉 `ml-remind-seen`，清空数据时不再删一个已经不存在的键
 
+### 变更
+- **最低宿主版本 `minSupVersion` 19.0.0 → 19.3.1**：19.0–19.2 的宿主管线仍卡 `index.html` 的 100KB 上限，而本插件产物在 200KB 左右 —— 装到一半报「index.html 大于 100kb」，这句报错跟版本毫无关系，用户只会当成安装包损坏。抬到 19.3.1 后由清单直接拒绝，能给出「版本不够」这个正确结论。README 中英两处同步改为 19.3.1，`static.test.js` 的断言值一并更新（该断言钉的是「清单值 == README 值」，两处必须同时改，否则测试红）
+
 ### 测试
 - `core.test.js`：`[8]` 从「两个渠道」改为「提醒设置」——铃铛随开关、归档静音、只有档位时按默认开，并断言 `defaultRemind()` / `normalizeRemind()` 里没有 `snack`、`Core.dueReminders` 已不存在
 - `reminder.test.js`：删掉提示条相关小节的全部用例（`[10] 提示条按每个事项的开关`、`[11]` 里的降级断言等），`snacks` 计数桩一并移除，小节重新编号为 1–12
