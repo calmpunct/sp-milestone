@@ -1508,6 +1508,141 @@ async function backToList() {
     domA.window.close();
   }
 
+  console.log('[26] 详情内容没变就不重绘（保住滚动位置）');
+  {
+    const seed = {
+      version: 1,
+      settings: { lang: 'zh', lunar: true },
+      events: [
+        { id: 'd1', title: '妈妈', kind: 'birthday', calendar: 'solar', date: '1968-05-14',
+          repeat: true, color: '#d6336c', note: '一段很长的备注\n第二行' },
+        { id: 'd2', title: '项目上线', kind: 'countdown', calendar: 'solar', date: '2026-12-01',
+          repeat: false, color: '#1c7ed6', note: '' }
+      ]
+    };
+    const domD = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(w) {
+        w.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w.__STORE__ = JSON.stringify(seed);
+        w.__SAVES__ = [];
+        w.PluginAPI = {
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook() {}, showIndexHtmlAsView() {}, showSnack() {},
+          loadSyncedData() { return Promise.resolve(w.__STORE__); },
+          persistDataSynced(s) { w.__STORE__ = s; w.__SAVES__.push(s); return Promise.resolve(); },
+          openDialog() { return Promise.resolve('取消'); }
+        };
+      }
+    });
+    const dD = domD.window.document;
+    const $D = (s) => dD.querySelector(s);
+    await new Promise((r) => setTimeout(r, 320));
+
+    $D('.ml-item[data-id="d1"]').click();
+    await new Promise((r) => setTimeout(r, 180));
+    const first = $D('#mlDetailBody').firstElementChild;
+    ok(!!first, '详情已渲染');
+
+    // 切筛选会走一次完整 renderAll，但详情的内容与语言都没变
+    dD.querySelectorAll('.ml-chip')[0].click();
+    await new Promise((r) => setTimeout(r, 80));
+    eq($D('#mlDetailBody').firstElementChild, first, '内容没变就不重写 innerHTML（节点引用不变）');
+
+    // 关闭再打开：内容相同也要重画一次，滚动位置回到顶部
+    $D('#mlDetailBack').click();
+    await new Promise((r) => setTimeout(r, 420));
+    $D('.ml-item[data-id="d1"]').click();
+    await new Promise((r) => setTimeout(r, 180));
+    ok($D('#mlDetailBody').firstElementChild !== first, '重新打开时重画（滚动位置归零）');
+    domD.window.close();
+  }
+
+  console.log('[27] 表单开着切语言：下拉跟着换；表单关着时不重建');
+  {
+    const seed = {
+      version: 1,
+      settings: { lang: 'auto', lunar: true },
+      events: [
+        { id: 'l1', title: '妈妈', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
+          lunar: { year: 1968, month: 4, day: 18, isLeap: false }, repeat: true, color: '#d6336c', note: '' }
+      ]
+    };
+    let curLang = 'zh';
+    const domL = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://localhost/',
+      virtualConsole: vc,
+      beforeParse(w) {
+        w.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+        w.__STORE__ = JSON.stringify(seed);
+        w.__SAVES__ = [];
+        w.__hooks = {};
+        w.PluginAPI = {
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          onReady(fn) { setTimeout(fn, 0); },
+          registerHook(k, fn) { w.__hooks[k] = fn; },
+          showIndexHtmlAsView() {}, showSnack() {},
+          getCurrentLanguage() { return curLang; },
+          getAppState() { return Promise.resolve({ globalConfig: { localization: { lng: '' } } }); },
+          loadSyncedData() { return Promise.resolve(w.__STORE__); },
+          persistDataSynced(s) { w.__STORE__ = s; w.__SAVES__.push(s); return Promise.resolve(); },
+          openDialog() { return Promise.resolve('取消'); }
+        };
+      }
+    });
+    const dL = domL.window.document;
+    const $L = (s) => dL.querySelector(s);
+    await new Promise((r) => setTimeout(r, 320));
+
+    ok($L('.ml-title').textContent.indexOf('里程碑') !== -1, '启动是中文：' + $L('.ml-title').textContent);
+
+    $L('#mlAdd').click();
+    await new Promise((r) => setTimeout(r, 200));
+    eq($L('#fLY').options.length, 201, '年份下拉 1900-2100 共 201 项');
+    eq($L('#fLY').firstElementChild.textContent, '1900 年', '年份文案是中文');
+    const yearSel = $L('#fLY');
+    const yearVal = yearSel.value;
+
+    // 先手选一个非默认颜色：选中态只活在 DOM 上，重建下拉/按钮时不能把它清掉
+    const colorBtns = dL.querySelectorAll('#fColors .ml-color');
+    const pickIdx = colorBtns.length - 1;
+    colorBtns[pickIdx].click();
+    const pickedColor = colorBtns[pickIdx].dataset.c;
+
+    // 宿主里切成英文：表单开着，下拉必须跟着换语言（option 文案按语言拼）
+    curLang = 'en';
+    domL.window.__hooks.languageChange({ code: 'en', newLanguage: 'en' });
+    await new Promise((r) => setTimeout(r, 260));
+    eq($L('#mlLayer').hidden, false, '表单仍开着');
+    eq($L('#fLY'), yearSel, '下拉元素本身没被替换');
+    eq($L('#fLY').options.length, 201, '仍然是 201 项');
+    eq($L('#fLY').firstElementChild.textContent, '1900', '表单开着切语言：年份文案跟着变英文');
+    eq($L('#fLY').value, yearVal, '当前选中的年份保留');
+    eq($L('#fColors .ml-color[aria-pressed="true"]').dataset.c, pickedColor, '手选的颜色不被重建清掉');
+
+    $L('#mlCancel').click();
+    await new Promise((r) => setTimeout(r, 420));
+    const optBefore = $L('#fLY').firstElementChild;
+
+    // 表单关着切回中文：不再白造 201 个 option，等下次开表单时再按新语言建
+    curLang = 'zh';
+    domL.window.__hooks.languageChange({ code: 'zh', newLanguage: 'zh' });
+    await new Promise((r) => setTimeout(r, 260));
+    ok($L('.ml-title').textContent.indexOf('里程碑') !== -1, '界面回到中文');
+    eq($L('#fLY').firstElementChild, optBefore, '表单关着时切语言不重建年份下拉');
+
+    $L('#mlAdd').click();
+    await new Promise((r) => setTimeout(r, 200));
+    eq($L('#fLY').firstElementChild.textContent, '1900 年', '再次打开表单时按当前语言重建');
+    domL.window.close();
+  }
+
   console.log('[23] 无运行时错误');
   eq(errors.length, 0, '控制台无报错' + (errors.length ? '：\n     ' + errors.join('\n     ') : ''));
 

@@ -518,7 +518,7 @@
     return { years: n, days: Math.max(0, diffDays(mark, w)) };
   }
 
-  /** 纪念日已满多少整年，不满一年返回 null */
+  /** 纪念日已满多少整年，不满一年返回 null（anniversarySpan 的薄封装，界面用 span，本函数留给测试） */
   function anniversaryYears(ev, when) {
     var span = anniversarySpan(ev, when);
     return span ? span.years : null;
@@ -680,12 +680,6 @@
     return { total: total, done: done, left: left, ratio: done / total };
   }
 
-  /** 当前周期已过百分比（0-1），仅在每年重复时有意义 */
-  function cycleProgress(ev, occ, today) {
-    var info = cycleInfo(ev, occ, today);
-    return info ? info.ratio : null;
-  }
-
   /**
    * 一个公历日期的展示文本：公历与农历合成一段，谁在前由「当初按哪个历法填的」决定
    *   · 公历来源 → 「2026-05-12（农历四月初五）」  公历（农历）
@@ -786,7 +780,7 @@
     return I.t('zodiac.label', { gz: Lunar.ganzhiOf(ev.lunar.year), z: Lunar.zodiacOf(ev.lunar.year) });
   }
 
-  /** 今天是否有事（用于启动提醒） */
+  /** 今天是否有事（目前只被测试使用；运行时的提醒走 reminder-tasks 的期望集合） */
   function eventsOn(events, day) {
     var t = startOfDay(day || new Date());
     return events.filter(function (ev) {
@@ -837,7 +831,6 @@
     hasReminder: hasReminder,
     dueReminders: dueReminders,
     cycleInfo: cycleInfo,
-    cycleProgress: cycleProgress,
     dateText: dateText,
     dateLabel: dateLabel,
     zodiacLabel: zodiacLabel,

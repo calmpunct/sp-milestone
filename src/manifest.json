@@ -1,7 +1,7 @@
 {
   "id": "milestone",
   "name": "Milestone",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Milestone — countdowns, anniversaries, birthdays and festivals, with lunar calendar conversion, festival presets and cross-device sync. / 里程碑：倒数日、纪念日、生日与节日管理，支持农历换算与预设节日、跨设备同步。",
   "manifestVersion": 1,
   "minSupVersion": "19.0.0",

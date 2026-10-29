@@ -230,11 +230,17 @@
       };
     }
 
-    buildYearSelect();
-    buildMonthSelect();
-    buildPresets();
-    if (!layer || layer.hidden) buildColors((state.draft && state.draft.color) || Core.COLORS[0]);
+    // 下拉、预设、颜色按钮的地盘都是 #mlLayer：表单没开时重建等于白做
+    // （光年份下拉就是 201 个 option）。表单开着时必须重建 —— option 文案跟着语言变，
+    // 而 primeHostLang 是异步补读的，完全可能在用户填表途中返回。
     if (drafting) {
+      buildYearSelect();
+      buildMonthSelect();
+      buildPresets();
+      // 颜色按钮的 aria-label 也按语言拼，保留当前选中的那个 ——
+      // 选中态只活在 DOM 上（collect() 从 aria-pressed 读），不能拿 draft.color 覆盖它
+      var picked = $('#fColors .ml-color[aria-pressed="true"]');
+      buildColors((picked && picked.dataset.c) || state.draft.color || Core.COLORS[0]);
       // 恢复农历下拉的当前值（含该月天数变化后的日钳位）
       if (keepLunar.y) $('#fLY').value = String(keepLunar.y);
       if (keepLunar.m) {
@@ -474,6 +480,8 @@
   function computeRows(today) {
     return state.data.events.map(function (ev) {
       var occ = Core.nextOccurrence(ev, today);
+      // 生日括号里放「这次生日多少岁」，不是今天多大
+      var age = Core.ageAt(ev, occ, today);
       return {
         ev: ev,
         occ: occ,
@@ -483,8 +491,8 @@
           : null,
         metric: metricOf(ev, occ, today),
         label: Core.dateLabel(ev, occ),
-        // 生日括号里放「这次生日多少岁」，不是今天多大
-        name: Core.titleOf(ev, Core.ageAt(ev, occ, today))
+        age: age,
+        name: Core.titleOf(ev, age)
       };
     });
   }
@@ -531,10 +539,13 @@
     var k = rows.length === 1 ? kindLower(state.filter) : pluralOf(state.filter);
     var txt = t('sub.count', { n: rows.length, k: k });
 
-    var todayCount = rows.filter(function (r) { return r.metric.days === 0 && r.metric.mode !== 'none'; }).length;
+    // 一次遍历同时拿到「今天」的数量与最近的一条，不再为计数单独 filter 一个数组
+    var todayCount = 0;
     var near = null;
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].metric.mode === 'remaining') { near = rows[i]; break; }
+      var m = rows[i].metric;
+      if (m.mode !== 'none' && m.days === 0) todayCount++;
+      if (!near && m.mode === 'remaining') near = rows[i];
     }
     if (todayCount) txt += t('sub.today', { n: todayCount });
     else if (near) txt += t('sub.near', { n: near.metric.days });
@@ -760,8 +771,9 @@
     // 先同步显示设置：日期文案在核心层拼，必须在渲染前定好农历开/关
     syncCoreSettings();
     var all = sortRows(computeRows(today));
-    var active = all.filter(function (r) { return !r.ev.archived; });
-    var archivedCount = all.length - active.length;
+    // 只为了拿归档条数，不必为此再分配一个过滤后的数组
+    var archivedCount = 0;
+    for (var a = 0; a < all.length; a++) if (all[a].ev.archived) archivedCount++;
     var rows = visibleRows(all);
     var settings = state.data.settings || Core.emptySettings();
 
@@ -789,8 +801,9 @@
       b.setAttribute('aria-pressed', String(b.dataset.f === state.filter));
     });
 
-    // 详情页开着时内容也要跟着数据走（保存、归档、同步都可能改到同一条）
-    refreshDetail();
+    // 详情页开着时内容也要跟着数据走（保存、归档、同步都可能改到同一条）。
+    // 把刚算好的那一行直接传过去，省掉详情页再把农历/周年换算一遍。
+    refreshDetail(findRow(all, state.detailId));
   }
 
   /* ================= 详情页 =================
@@ -961,30 +974,55 @@
       '</div>';
   }
 
-  function renderDetail() {
+  /** 从已算好的行里取某条记录：详情页复用 renderAll 的成果，不再重算农历/周年 */
+  function findRow(rows, id) {
+    if (!rows || !id) return null;
+    for (var i = 0; i < rows.length; i++) if (rows[i].ev.id === id) return rows[i];
+    return null;
+  }
+
+  // 上一次画进详情的 HTML：内容没变就不碰 DOM。
+  // 重写 innerHTML 不只是浪费，还会把详情页的滚动位置弹回顶部（备注长时很明显）。
+  var detailKey = '';
+
+  /**
+   * @param {object} [row] renderAll 已经算好的行；不传就现算（打开/单独刷新时走这条）
+   */
+  function renderDetail(row) {
     if (!state.detailId) return;
-    var ev = detailEvent();
+    var ev = row ? row.ev : detailEvent();
     if (!ev) { closeDetail(); return; }
     // 详情可能单独刷新（打开、保存、切语言），这里也要保证核心层拿到当前的农历设置
     syncCoreSettings();
     var today = new Date();
-    var occ = Core.nextOccurrence(ev, today);
-    var m = metricOf(ev, occ, today);
-    var span = ev.kind === 'anniversary' ? Core.anniversarySpan(ev, today) : null;
-    // 「3岁生日」这一行的数字：下次生日那天的周岁，不是今天多大
-    var age = Core.ageAt(ev, occ, today);
-    var name = Core.titleOf(ev, age);
-    $('#mlDetailBody').innerHTML = detailHtml(ev, occ, m, span, name, today, age);
+    if (!row) {
+      var occ = Core.nextOccurrence(ev, today);
+      // 「3岁生日」这一行的数字：下次生日那天的周岁，不是今天多大
+      var age = Core.ageAt(ev, occ, today);
+      row = {
+        ev: ev,
+        occ: occ,
+        span: ev.kind === 'anniversary' ? Core.anniversarySpan(ev, today) : null,
+        metric: metricOf(ev, occ, today),
+        name: Core.titleOf(ev, age),
+        age: age
+      };
+    }
+    var html = detailHtml(row.ev, row.occ, row.metric, row.span, row.name, today, row.age);
+    if (html === detailKey) return;
+    detailKey = html;
+    $('#mlDetailBody').innerHTML = html;
   }
 
   /**
    * 数据变动后刷新详情（保存、同步、切语言都会走到）。
    * 条目已经被删掉时直接退回列表，别让用户对着一条不存在的记录继续点「编辑」。
+   * @param {object} [row] renderAll 算好的行，可选
    */
-  function refreshDetail() {
+  function refreshDetail(row) {
     if (!state.detailId) return;
     if (!detailEvent()) { closeDetail(); return; }
-    renderDetail();
+    renderDetail(row);
   }
 
   /**
@@ -1026,6 +1064,8 @@
   function closeDetail() {
     if (!state.detailId) return;
     state.detailId = null;
+    // 下次打开重新画一遍：内容可能与上次相同，但滚动位置该回到顶部
+    detailKey = '';
     document.body.classList.remove('ml-detail-open');
     // 先解除 inert 再还焦点，否则 focus() 在 inert 子树里不生效
     setAppInert(false);
@@ -1407,6 +1447,10 @@
     // 预设分组跟着农历开关走，每次开表单按当前设置重建一遍
     // （load / 改设置时表单是关着的，重建只在这里做最稳妥）
     buildPresets();
+    // 农历年/月下拉同理：光年份就 201 个 option，不该跟着每次语言解析重建。
+    // openSheet -> fillSheet 是开表单的必经之路，在这里建一次即可。
+    buildYearSelect();
+    buildMonthSelect();
     $('#mlSheetTitle').textContent = isEdit ? t('sheet.edit') : t('sheet.new', { k: kindLower(d.kind) });
     $('#fTitle').value = d.title || '';
     markTitleInvalid(false);
