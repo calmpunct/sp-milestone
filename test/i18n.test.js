@@ -140,6 +140,15 @@ eq(I.t('appName'), 'Milestone', '英文取词（品牌名单数）');
 eq(I.t('offset.3'), '3 days before', '英文档位文案');
 eq(I.t('years.n', { n: 7 }), '7 years', '占位符替换');
 eq(I.t('不存在的键'), '不存在的键', '未知键原样返回（便于发现漏配）');
+// 英文行文：置顶卡的标签句与大数字分两行显示，合起来必须成句
+// "Mom is / 2 days away"（英文没有「后天」这个单词，第三档只好保留数字但换成能接 is 的说法）
+eq(I.t('when.2'), '2 days away', '三天内第三档能接在「… is」后面');
+eq(I.html('hero.elapsedLabel', { name: 'Mom' }), 'Since <b>Mom</b>', '已过态写「Since Mom」而不是「Mom since」');
+eq(I.t('sub.near', { n: 5 }), ' · next in 5 days', '副标题说「next in N days」而不是 nearest');
+eq(I.t('form.saveN', { n: 3 }), 'Add 3', '批量保存按钮文案带命名空间');
+// 年份下拉、预设提示这两处「看着不对称」其实是对的，用断言钉住，免得下一轮又被改回去
+eq(I.t('lunar.yearOpt', { y: 2026 }), '2026', '英文年份选项是纯数字（年 是汉语量词，不该翻）');
+eq(I.t('preset.next', { date: '2026-09-25' }), ' Next: 2026-09-25.', '预设提示以前导空格接在上一句后面');
 
 console.log('[6] 语言包不当可信 HTML');
 eq(I.safeHtml('开<b>关</b>'), '开<b>关</b>', '保留 <b>');

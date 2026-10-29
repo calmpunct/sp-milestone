@@ -236,7 +236,9 @@
       // 语言偏好：auto 跟随系统，或强制 zh / en
       lang: 'auto',
       // 是否显示农历（默认关：不用农历的界面里一个农历元素都不出现）
-      lunar: false
+      lunar: false,
+      // 大卡片是否显示秒级的倒计时/正计时（默认关：不打开就一个定时器都不起）
+      tick: false
     };
   }
 
@@ -260,6 +262,8 @@
       data.settings.lang = s.lang === 'en' || s.lang === 'zh' ? s.lang : 'auto';
       // 农历显示：只有明确的 true 才算开（缺省、旧数据、坏值都是关）
       data.settings.lunar = s.lunar === true;
+      // 秒级计时：同上，缺省与坏值都按关处理（关着不建定时器）
+      data.settings.tick = s.tick === true;
     }
 
     var list = Array.isArray(raw.events) ? raw.events : [];

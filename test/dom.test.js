@@ -100,7 +100,7 @@ const detailRow = (label) => {
   return hit ? hit.querySelector('.ml-detail-v').textContent : null;
 };
 
-/** 标签是动态生成的行（「3岁生日」「2 周年时间」）：按正则找 */
+/** 标签是动态生成的行（「3岁生日」「2 周年」）：按正则找 */
 const detailRowMatch = (re) => {
   const rows = Array.from(document.querySelectorAll('#mlDetailBody .ml-detail-row'));
   const hit = rows.find((r) => re.test(r.querySelector('.ml-detail-k').textContent));
@@ -272,27 +272,27 @@ async function backToList() {
   await backToList();
   eq($('#mlDetailLayer').hidden, true, '点返回回到列表');
 
-  console.log('[3.6] 纪念日详情：「那一天」+「N 周年时间」+「已满」');
+  console.log('[3.6] 纪念日详情：「那一天」+「N 周年」+「已满」');
   byId('b3').click();
   await wait(150);
   eq(detailRow('类型'), null, '纪念日详情同样不列类型');
   eq(detailRow('上次'), null, '不再有「上次」这种叫法');
   ok(detailRow('那一天').indexOf('2018-06-16') === 0, '「那一天」是起算日，不是下次发生日：' + detailRow('那一天'));
   ok(/已过 \d+ 天/.test(detailRow('那一天')), '那一天配「已过 N 天」：' + detailRow('那一天'));
-  const annRow = detailRowMatch(/^\d+ 周年时间$/);
-  ok(!!annRow, '有「N 周年时间」一行');
+  const annRow = detailRowMatch(/^\d+ 周年$/);
+  ok(!!annRow, '有「N 周年」一行');
   ok(!!annRow && /^\d{4}-\d{2}-\d{2} · 周./.test(annRow.v), '周年行给日期与星期：' + (annRow && annRow.v));
   ok(!!annRow && /还有 \d+ 天|就是今天/.test(annRow.v), '周年行带剩余天数：' + (annRow && annRow.v));
   // 周年行说的是「下一个」周年，所以比已满整年多一年（正日子当天两者相等）
   const nextNth = (now.getMonth() === 5 && now.getDate() === 16) ? annYears : annYears + 1;
-  eq(!!annRow && annRow.k, nextNth + ' 周年时间', '周年行的数字是下一次那届');
+  eq(!!annRow && annRow.k, nextNth + ' 周年', '周年行的数字是下一次那届');
   ok(/周年/.test(detailRow('已满')), '显示已满周年与零头：' + detailRow('已满'));
-  // 行序：那一天 → 已满 → N 周年时间（先认起点，再说走了多久，最后说下一个节点）
+  // 行序：那一天 → 已满 → N 周年（先认起点，再说走了多久，最后说下一个节点）
   const annKeys = Array.from(document.querySelectorAll('#mlDetailBody .ml-detail-row'))
     .map((r) => r.querySelector('.ml-detail-k').textContent);
   ok(annKeys.indexOf('那一天') < annKeys.indexOf('已满'), '「已满」排在「那一天」之后：' + annKeys.join(' / '));
-  ok(annKeys.indexOf('已满') < annKeys.findIndex((k) => /周年时间$/.test(k)),
-    '「N 周年时间」排在「已满」之后：' + annKeys.join(' / '));
+  ok(annKeys.indexOf('已满') < annKeys.findIndex((k) => /^\d+ 周年$/.test(k)),
+    '「N 周年」排在「已满」之后：' + annKeys.join(' / '));
   // 进度条只给生日与纪念日；纪念日按「本周年」画
   ok(!!$('#mlDetailBody .ml-bar'), '纪念日详情有进度条');
   ok($('#mlDetailBody .ml-bar-text').textContent.includes('本周年已过'), '文案是「本周年已过 N%」：' +
@@ -1246,7 +1246,7 @@ async function backToList() {
     dom6.window.close();
 
     // 英文包：同样的三天内也要说 Today / Tomorrow，不能回落成裸键名
-    const seedEn = { version: 1, settings: { lang: 'en' }, events: [mk('e0', 0), mk('e1', 1)] };
+    const seedEn = { version: 1, settings: { lang: 'en' }, events: [mk('e0', 0), mk('e1', 1), mk('e2', 2)] };
     const dom7 = new JSDOM(html, {
       runScripts: 'dangerously',
       pretendToBeVisual: true,
@@ -1270,6 +1270,9 @@ async function backToList() {
     const enCell = (id) => d7.querySelector('.ml-item[data-id="' + id + '"] .ml-item-num b').textContent;
     eq(enCell('e0'), 'Today', '英文：Today');
     eq(enCell('e1'), 'Tomorrow', '英文：Tomorrow');
+    // 英文没有「后天」这个单词，Day after tomorrow 在 50px 的大数字位放不下，
+    // 第三档改成能接在「… is」后面的「N days away」
+    eq(enCell('e2'), '2 days away', '英文：剩余 2 天说 2 days away');
     ok(d7.querySelector('.ml-hero-label').textContent.includes('is'), '英文置顶卡片用「… is」句式');
     dom7.window.close();
   }

@@ -309,7 +309,11 @@ const oldShape = Core.normalize({
 eq(oldShape.events[0].remind.task, true, '旧 on 被忽略，按缺省加入任务列表');
 eq(oldShape.events[0].remind.snack, false, '旧 on 不会打开提示条');
 eq(oldShape.events[0].remind.offsets.join(','), '0,3', '合法档位仍被保留');
-eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,lunar,taskTag', 'settings 只有语言、标签名、置顶与农历开关');
+eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,lunar,taskTag,tick', 'settings 只有语言、标签名、置顶、农历与秒级计时开关');
+// 秒级计时默认关：旧数据没这一项、坏值也一律按关（关着连定时器都不建）
+eq(oldShape.settings.tick, false, '秒级计时默认关');
+eq(Core.normalize({ settings: { tick: 'yes' } }).settings.tick, false, '非布尔值不算开');
+eq(Core.normalize({ settings: { tick: true } }).settings.tick, true, '明确 true 才算开');
 eq('taskProject' in oldShape.settings, false, '旧的项目名已迁出：任务改落收件箱 + 标签');
 eq(oldShape.settings.taskTag, 'milestone', '标签名默认 milestone');
 eq(Core.normalize({ settings: { taskTag: '  ' } }).settings.taskTag, 'milestone', '空白标签名回落到默认值');

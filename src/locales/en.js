@@ -124,10 +124,14 @@
     'chip.festival': "Festivals",
     'chip.archive': "Archive",
 
-    /* ---------------- relative days (no numbers within 3 days) ---------------- */
+    /* ---------------- relative days ----------------
+     * Chinese says 今天 / 明天 / 后天 with no digit; English has no one-word form for "the day
+     * after tomorrow", and the phrase is far too wide for the 50px hero number, so the third
+     * slot keeps the number and takes the "N days away" shape — it reads correctly both alone
+     * (list column) and after the hero label "… is" (see hero.soonLabel). */
     'when.0': "Today",
     'when.1': "Tomorrow",
-    'when.2': "In 2 days",
+    'when.2': "2 days away",
 
     /* ---------------- subtitle ---------------- */
     'sub.archived': "{n} archived · not reminded",
@@ -136,15 +140,19 @@
     'sub.emptyFilter': "No entries in this category yet",
     'sub.count': "{n} {k}",
     'sub.today': " · {n} today",
-    'sub.near': " · nearest in {n} days",
+    'sub.near': " · next in {n} days",
     'sub.archivedN': " · {n} archived",
 
     /* ---------------- featured card ---------------- */
+    // label sits above the big number: "<b>Mom</b> in" + "5 days"
     'hero.remainLabel': "<b>{name}</b> in",
-    // within 0/1/2 days the big number becomes "Today / Tomorrow / In 2 days"
+    // within 0/1/2 days the big number becomes a word ("Today / Tomorrow / 2 days away");
+    // the verb stays in the label so the two lines read as one sentence: "Mom is / tomorrow"
     'hero.todayLabel': "<b>{name}</b> is",
     'hero.soonLabel': "<b>{name}</b> is",
-    'hero.elapsedLabel': "<b>{name}</b> since",
+    // the other way round: "Since <b>Mom</b>" + "5 days" — "<b>Mom</b> since" reads as
+    // "Mom since 5 days", which is not English
+    'hero.elapsedLabel': "Since <b>{name}</b>",
     // the label sentence above already says left/passed, so the unit is just "days"
     'hero.unitRemain': "days",
     'hero.unitElapsed': "days",
@@ -157,6 +165,15 @@
     'hero.barTotal': "{n} days in total",
     'hero.emptyHint': "Tap \"Add\" to record your first date",
     'hero.emptyArchiveHint': "Archived entries are not featured",
+    // the seconds line (opt-in in settings, off by default); zero-padded so the digits don't shuffle
+    'tick.h': "h",
+    'tick.m': "m",
+    'tick.s': "s",
+    // unit labels of the detail card's other readings (y/mo/d, w/d): shortest form, right next to the digits
+    'part.y': "y",
+    'part.mo': "mo",
+    'part.d': "d",
+    'part.w': "w",
 
     /* ---------------- list rows ---------------- */
     'unit.overflow': "Out of range",
@@ -177,13 +194,15 @@
     // the upcoming occurrence + how many days left
     'detail.bdayAge': "Turning {n}",
     'detail.bdayNext': "Next birthday",
-    'detail.annAge': "Year {n}",
+    'detail.annAge': "Anniversary {n}",
     'detail.annNext': "Next anniversary",
     'detail.span': "Elapsed",
     'detail.remind': "Reminders",
     'detail.status': "Status",
     'detail.repeat': "Repeat",
     'detail.note': "Note",
+    // hover hint on the detail card: click to cycle days / y-mo-d / w-d / h-m-s
+    'detail.cycle': "Click to switch reading: days / y-mo-d / w-d / h-m-s",
     'detail.statusArchived': "Archived",
     'detail.statusExpired': "Expired",
     'detail.daysLeft': "{n} days left",
@@ -245,6 +264,7 @@
     'lunar.invalid': "This lunar date does not exist — adjust the year or month",
     'lunar.preview': "{lunar} on the Gregorian calendar: {date} {week} · {gz} year · {z}",
     'lunar.dimSuffix': " (that month has {n} days, using {d})",
+    // plain number: an English year option is "2026", the Chinese 年 is a classifier with no translation
     'lunar.yearOpt': "{y}",
 
     /* ---------------- preset hints ---------------- */
@@ -255,6 +275,8 @@
     'preset.chuxi': "Uses the last day of lunar month 12; short years fall back to day 29.",
     'preset.lunar': "{name} follows the lunar calendar, so its Gregorian date changes yearly.",
     'preset.solar': "{name} falls on {m}/{d} every year.",
+    // appended straight after the sentence above, so the leading space glues the two together
+    // (Chinese needs none: 。 already carries the gap)
     'preset.next': " Next: {date}.",
 
     /* ---------------- reminder hints ---------------- */
@@ -272,6 +294,9 @@
     'set.lunar': "Calendar",
     'set.lunarToggle': "Enable the lunar calendar",
     'set.lunarLocked': "{n} lunar entries exist, so this cannot be turned off — they would only show the Gregorian date and their calendar could no longer be edited. Delete them first.",
+    // seconds-level timer: off by default; worth trying once, cost is one repaint per second
+    'set.tick': "Seconds",
+    'set.tickToggle': "Show hh:mm:ss on the big card",
     'set.data': "Data",
     'set.clear': "Clear Milestone data cache",
     'set.clearHint': "For wrong data, duplicate tasks or bad dates. Clears every entry and setting and removes this plugin's tasks — <b>other tasks stay</b>.",
@@ -303,6 +328,6 @@
     'toast.pickFestival': "Please pick a festival",
     'toast.batch': "Added {n} festivals",
     'toast.lunarLocked': "Lunar entries exist — cannot turn it off",
-    saveN: "Add {n}",
+    'form.saveN': "Add {n}",
   };
 });

@@ -156,6 +156,15 @@
     'hero.barTotal': "共 {n} 天",
     'hero.emptyHint': "点右上角「添加」记下第一个重要日期",
     'hero.emptyArchiveHint': "归档中的事项不参与置顶",
+    // 秒级计时那一行（设置里可开，默认关）：数字补零，等宽排下来不会左右跳
+    'tick.h': "时",
+    'tick.m': "分",
+    'tick.s': "秒",
+    // 详情大卡片换档后的分段单位（年/月/天、周/天）：贴着数字，用最短的写法
+    'part.y': "年",
+    'part.mo': "月",
+    'part.d': "天",
+    'part.w': "周",
 
     /* ---------------- 列表条目 ---------------- */
     'unit.overflow': "超出可算年限",
@@ -176,13 +185,17 @@
     // 第二次发生的那个日子 + 还有多少天
     'detail.bdayAge': "{n}岁生日",
     'detail.bdayNext': "下次生日",
-    'detail.annAge': "{n} 周年时间",
+    // 不写「N 周年时间」：右边那格就是日期，「时间」两个字是重复的，
+    // 还会把左侧标签列撑过 4.2em，窄屏上「时间」两字被折到下一行
+    'detail.annAge': "{n} 周年",
     'detail.annNext': "下次周年",
     'detail.span': "已满",
     'detail.remind': "提醒",
     'detail.status': "状态",
     'detail.repeat': "重复",
     'detail.note': "备注",
+    // 详情大卡片的悬停提示：点一下在天 / 年·月·天 / 周·天 / 时·分·秒 之间换
+    'detail.cycle': "点击切换读法：天 / 年月日 / 周天 / 时分秒",
     'detail.statusArchived': "已归档",
     'detail.statusExpired': "已过期",
     'detail.daysLeft': "还有 {n} 天",
@@ -271,6 +284,9 @@
     'set.lunar': "历法",
     'set.lunarToggle': "启用农历系统",
     'set.lunarLocked': "还有 {n} 个农历事项，不能关闭：关掉后这些记录只显示公历、也改不了历法。先删掉它们再关。",
+    // 秒级计时：默认关，开一次才知道值不值（每秒一次刷新，老设备上能感觉到）
+    'set.tick': "秒级计时",
+    'set.tickToggle': "大卡片显示时分秒",
     'set.data': "数据",
     'set.clear': "清除里程碑数据缓存",
     'set.clearHint': "数据错乱、任务重复或日期算错时可用。会清空全部事项与设置，并移除本插件生成的任务；<b>其他任务与项目不受影响</b>。",
@@ -302,6 +318,6 @@
     'toast.pickFestival': "请选择节日",
     'toast.batch': "已添加 {n} 个节日",
     'toast.lunarLocked': "还有农历事项，无法关闭农历显示",
-    saveN: "添加 {n} 个",
+    'form.saveN': "添加 {n} 个",
   };
 });

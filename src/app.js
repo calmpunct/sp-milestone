@@ -356,7 +356,10 @@
   }
 
   function onVisibility() {
-    if (!isPageHidden()) detectTheme();
+    // 切到后台：秒表直接停掉（看不见的计时不该每秒算一次）；回到前台再重启并立刻补一次
+    if (isPageHidden()) { stopTick(); return; }
+    detectTheme();
+    syncTick();
   }
 
   function watchTheme() {
@@ -400,6 +403,7 @@
   /** 页面卸载时把定时器/观察器都收掉，避免 iframe 反复重建时残留 */
   function teardown() {
     if (themeTimer) { clearInterval(themeTimer); themeTimer = null; }
+    stopTick();
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
     if (sheetTimer) { clearTimeout(sheetTimer); sheetTimer = null; }
@@ -572,14 +576,247 @@
   // 上一次渲染出的卡片内容：一致就不碰 DOM（省一次重排，也不会重播入场动画）
   var heroKey = '';
 
-  /**
-   * 大卡片主体：标签句 + 天数 + 日期行 + 进度条
-   * 置顶卡与详情页共用这一份，两处样式与文案才不会各走一路
+  /* ---------------- 秒级计时（设置项 tick，默认关） ----------------
+   * 大卡片在天数下面补一行「时 分 秒」。它说的是「到那个日子的零点还差多久」：
+   *   · 剩余 → 今天零点算起，跨到目标那天的零点
+   *   · 已过 → 今天零点算起，走到现在
+   * 天数按日历日算（明天 = 1 天，与提醒口径一致），所以跨零点时两截同时翻页。
+   * 三天内大数字换成「今天 / 明天 / 后天」时，这一行要跟着改口径：
+   *   · 今天 → 不显示（目标就是今天零点，已经过去了，没有可倒的东西）
+   *   · 明天 → 照旧（今天剩余正好等于到明天零点的时长）
+   *   · 后天 → 再加上一整天（今天剩余 + 24 小时才到后天零点）
+   *
+   * 排版比大数字小一号（44px），时 / 分 / 秒 三个数字一样大；单位字收小、颜色压淡，
+   * 谁主谁次一眼看得出来。
+   *
+   * 性能上只做三件事，别的都不做：
+   *   1. 任意时刻最多一个定时器，按整秒自校正（setInterval 累积误差，跑一小时能漂出几秒）
+   *   2. 每格只改三个数字节点的 textContent —— 不重建 innerHTML，卡片不重排、进度条不重播动画
+   *   3. 开关关着 / 页面不可见 / 卡片被详情页盖住 → 立刻停表，不产生任何计算
    */
-  function cardBodyHtml(row, today) {
+
+  /** 秒级计时开关（settings.tick，默认关） */
+  function tickOn() {
+    return !!(state.data.settings && state.data.settings.tick);
+  }
+
+  function pad2(n) {
+    return n < 10 ? '0' + n : '' + n;
+  }
+
+  /**
+   * 一个时长拆成「时 分 秒」三个两位数字
+   * @param {boolean} up true = 从 ts 走到现在（正计时），false = 从此刻走到 ts（倒计时）
+   * @param {number} ts  锚点时间戳（毫秒）：正计时是起点，倒计时是终点
+   * @param {number} now 当前时间戳
+   */
+  function tickParts(up, ts, now) {
+    // 倒计时向上取整：走到最后一秒仍显示 00 时 00 分 01 秒，到点才归零，不会提前停一秒在 0
+    var sec = up ? Math.floor((now - ts) / 1000) : Math.ceil((ts - now) / 1000);
+    if (!(sec > 0)) sec = 0;
+    return [
+      pad2(Math.floor(sec / 3600)),
+      pad2(Math.floor((sec % 3600) / 60)),
+      pad2(sec % 60)
+    ];
+  }
+
+  /** 今天（或再加 n 天）的零点时间戳；用 Date 构造而不是加 86400000，夏令时那天才不差一小时 */
+  function midnightTs(now, addDays) {
+    var d = new Date(now);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + (addDays || 0)).getTime();
+  }
+
+  /**
+   * 计时行要不要多加一整天：
+   * 大数字说「后天」时，它自己已经把「今天剩的」和「明天一整天」都算进那句「后天」里了，
+   * 下面这行要不跟着加 24 小时，就会显示成「后天 + 4 小时」这种连不上的读法。
+   */
+  function tickExtra(m) {
+    return m.mode === 'remaining' && m.days === 2 ? 1 : 0;
+  }
+
+  /**
+   * 计时行的结构：<b>01</b><span>时</span><b>50</b>… 三个数字单独成节点，
+   * 每秒只改这三个节点，单位字不动（单位也就不会被一起重排）
+   */
+  function tickHtml(m, today) {
+    if (!tickOn() || !m || m.mode === 'none') return '';
+    // 「今天」= 目标日已经到点（今天零点），没有可倒的余量
+    if (m.mode === 'remaining' && m.days === 0) return '';
+    var now = (today || new Date()).getTime();
+    var up = m.mode === 'elapsed';
+    var extra = tickExtra(m);
+    var ts = midnightTs(now, up ? 0 : 1 + extra);
+    var p = tickParts(up, ts, now);
+    var units = [t('tick.h'), t('tick.m'), t('tick.s')];
+    var out = '';
+    for (var i = 0; i < 3; i++) {
+      out += '<b>' + p[i] + '</b><span>' + esc(units[i]) + '</span>';
+    }
+    return '<div class="ml-hero-tick" data-up="' + (up ? '1' : '0') + '" data-ts="' + ts + '">' + out + '</div>';
+  }
+
+  var tickTimer = null;   // 下一个整秒的定时器（只有一个）
+  var tickNodes = [];     // 本轮要刷新的读数：{ up, ts, bs:[三个数字节点] }，每次重排后重建
+  var tickDay = '';       // 上一次 tick 时的日历日，用来发现跨零点
+
+  function stopTick() {
+    if (tickTimer) { clearTimeout(tickTimer); tickTimer = null; }
+    tickNodes = [];
+  }
+
+  function scheduleTick() {
+    if (tickTimer) clearTimeout(tickTimer);
+    // 对齐到下一个整秒，多等 8ms：定时器可能提前一两毫秒触发，不补这点会连算两次同一个秒数
+    tickTimer = setTimeout(tickRun, 1000 - (Date.now() % 1000) + 8);
+  }
+
+  function paintTick(now) {
+    for (var i = 0; i < tickNodes.length; i++) {
+      var n = tickNodes[i];
+      var p = tickParts(n.up, n.ts, now);
+      // 值没变就别碰 DOM（同一秒里补画一次时能省掉三次写）
+      for (var j = 0; j < 3; j++) if (n.bs[j].textContent !== p[j]) n.bs[j].textContent = p[j];
+    }
+  }
+
+  function tickRun() {
+    tickTimer = null;
+    if (!tickOn() || isPageHidden() || !tickNodes.length) { tickNodes = []; return; }
+    var now = Date.now();
+    // 跨零点：天数、农历、进度条、计时行的锚点全都变了，整页重排一次（重排里会重新起表）
+    var today = Core.ymd(new Date(now));
+    if (today !== tickDay) { tickDay = today; renderAll(); return; }
+    paintTick(now);
+    scheduleTick();
+  }
+
+  /**
+   * 按当前页面状态起表 / 停表。规则只有一条：只给**看得见**的那张卡片计时。
+   * 详情开着时置顶卡被它盖住了，就只走详情那张；页面切到后台则整只表停掉。
+   */
+  function syncTick() {
+    stopTick();
+    if (!tickOn() || isPageHidden()) return;
+    // 详情页里的读数有两种：计时行，和「时 / 分 / 秒」那一档的大数字（它本身就是秒级读数）
+    var root = document.querySelector(state.detailId ? '#mlDetailBody' : '#mlHero');
+    if (!root) return;
+    var list = root.querySelectorAll('.ml-hero-tick, .ml-hero-num[data-ts]');
+    if (!list.length) return;
+    tickNodes = [];
+    for (var i = 0; i < list.length; i++) {
+      tickNodes.push({
+        up: list[i].getAttribute('data-up') === '1',
+        ts: +list[i].getAttribute('data-ts'),
+        bs: list[i].getElementsByTagName('b')
+      });
+    }
+    var now = Date.now();
+    tickDay = Core.ymd(new Date(now));
+    paintTick(now);
+    scheduleTick();
+  }
+
+  /* ---------------- 详情大卡片的读数档 ----------------
+   * 点一下换一档：天 → 年/月/天 → 周/天 → 时/分/秒（最后这档只有开了秒级计时才给）。
+   * 只活在这一次详情里：关掉再打开回到「天」（用户没要求记住，记错反而更莫名其妙）。
+   */
+  var DETAIL_UNITS = ['d', 'ymd', 'wd', 'hms'];
+  var detailUnit = 'd';
+
+  /** 换下一档；「时/分/秒」要求开着秒级计时，关着就跳过 */
+  function cycleDetailUnit() {
+    var at = DETAIL_UNITS.indexOf(detailUnit);
+    for (var i = 1; i <= DETAIL_UNITS.length; i++) {
+      var u = DETAIL_UNITS[(at + i) % DETAIL_UNITS.length];
+      if (u !== 'hms' || tickOn()) { detailUnit = u; break; }
+    }
+    detailKey = '';
+    renderDetail();
+    // 换档后节点是新的（「时/分/秒」那档还要接着跳），秒表跟着重新认一遍
+    syncTick();
+  }
+
+  /**
+   * 从 a 到 b 的「年 / 月 / 天」：先按整月推，剩下的零头才算天。
+   * 直接拿年月日相减会在「1 月 31 日 → 3 月 1 日」这类边界上算出负天数，
+   * 这里改成把起点往后推 N 个月再数剩下的天。
+   */
+  function calendarSplit(a, b) {
+    if (!a || !b || b.getTime() < a.getTime()) return [0, 0, 0];
+    var total = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    if (b.getDate() < a.getDate()) total -= 1;
+    if (total < 0) total = 0;
+    var y = a.getFullYear();
+    var mo = a.getMonth() + total;
+    var last = new Date(y + Math.floor(mo / 12), (mo % 12) + 1, 0).getDate();
+    var anchor = new Date(y + Math.floor(mo / 12), mo % 12, Math.min(a.getDate(), last));
+    var d = Core.diffDays(anchor, b);
+    if (d < 0) d = 0;
+    return [Math.floor(total / 12), total % 12, d];
+  }
+
+  /** 某一档的读数：[[数字, 单位文案键], …] */
+  function unitParts(m, unit, today) {
+    var days = m.days > 0 ? m.days : 0;
+    if (unit === 'wd') {
+      var w = Math.floor(days / 7);
+      var rest = days % 7;
+      if (!w) return [[String(days), 'part.d']];
+      return rest ? [[String(w), 'part.w'], [String(rest), 'part.d']] : [[String(w), 'part.w']];
+    }
+    if (unit === 'ymd') {
+      // 已过：起算那天 → 今天；剩余：今天 → 目标那天
+      var elapsed = m.mode === 'elapsed';
+      var sp = calendarSplit(elapsed ? m.date : today, elapsed ? today : m.date);
+      var out = [];
+      if (sp[0]) out.push([String(sp[0]), 'part.y']);
+      if (sp[1]) out.push([String(sp[1]), 'part.mo']);
+      if (sp[2] || !out.length) out.push([String(sp[2]), 'part.d']);
+      return out;
+    }
+    return [];
+  }
+
+  /** 「8 年 4 月 21 天」「437 周 2 天」这种多段读数（时/分/秒那一档单独走 livePartsHtml） */
+  function partsHtml(m, unit, cls, today) {
+    var list = unitParts(m, unit, today);
+    var inner = '';
+    for (var i = 0; i < list.length; i++) {
+      inner += '<b>' + esc(list[i][0]) + '</b><span>' + esc(t(list[i][1])) + '</span>';
+    }
+    return '<div class="' + cls + ' ml-hero-num--parts">' + inner + '</div>';
+  }
+
+  /**
+   * 「时 / 分 / 秒」那一档：整段时长折成小时（不折天），并且是活的 ——
+   * 它本身就是秒级读数，交给计时器每秒改那三个数字节点，不再另起一行计时。
+   * data-ts 是锚点（已过 = 起点零点，剩余 = 终点零点），跨设备算都不用重算。
+   */
+  function livePartsHtml(m, cls) {
+    var up = m.mode === 'elapsed';
+    var ts = m.date ? Core.startOfDay(m.date).getTime() : midnightTs(Date.now(), 0);
+    var p = tickParts(up, ts, Date.now());
+    var units = [t('tick.h'), t('tick.m'), t('tick.s')];
+    var inner = '';
+    for (var i = 0; i < 3; i++) {
+      inner += '<b>' + p[i] + '</b><span>' + esc(units[i]) + '</span>';
+    }
+    return '<div class="' + cls + ' ml-hero-num--parts" data-up="' +
+      (up ? '1' : '0') + '" data-ts="' + ts + '">' + inner + '</div>';
+  }
+
+  /**
+   * 大卡片主体：标签句 + 天数 + 计时行 + 日期行 + 进度条
+   * 置顶卡与详情页共用这一份，两处样式与文案才不会各走一路
+   * @param {string} [unit] 读数档（只有详情页会换档）：d / ymd / wd / hms，缺省 d
+   */
+  function cardBodyHtml(row, today, unit) {
     var ev = row.ev;
     var occ = row.occ;
     var m = row.metric;
+    var mode = unit || 'd';
 
     if (m.mode === 'none') {
       return '<div class="ml-hero-label">' + esc(row.name) + '</div>' +
@@ -597,12 +834,18 @@
       label = I.html(m.days === 0 ? 'hero.todayLabel' : 'hero.soonLabel', { name: esc(row.name) });
     } else label = I.html('hero.remainLabel', { name: esc(row.name) });
 
-    var numCls = remain
-      ? 'ml-hero-num ml-hero-num--remain' + (disp.word ? ' ml-hero-num--word' : '')
-      : 'ml-hero-num ml-hero-num--elapsed';
-    // 文字状态（今天/明天/后天）已经把话说完了，不再挂单位
-    var unit = disp && disp.word ? '' : '<span>' + esc(t(remain ? 'hero.unitRemain' : 'hero.unitElapsed')) + '</span>';
-    var num = '<div class="' + numCls + '">' + esc(disp ? disp.text : String(m.days)) + unit + '</div>';
+    var colorCls = remain ? 'ml-hero-num ml-hero-num--remain' : 'ml-hero-num ml-hero-num--elapsed';
+    var num;
+    if (mode === 'hms') {
+      num = livePartsHtml(m, colorCls);
+    } else if (mode !== 'd') {
+      num = partsHtml(m, mode, colorCls, today);
+    } else {
+      var numCls = colorCls + (disp && disp.word ? ' ml-hero-num--word' : '');
+      // 文字状态（今天/明天/后天）已经把话说完了，不再挂单位
+      var unitTxt = disp && disp.word ? '' : '<span>' + esc(t(remain ? 'hero.unitRemain' : 'hero.unitElapsed')) + '</span>';
+      num = '<div class="' + numCls + '">' + esc(disp ? disp.text : String(m.days)) + unitTxt + '</div>';
+    }
 
     // 日期在核心层拼成一段（公历 + 农历，农历关闭时只剩公历），
     // 与列表、详情页同一套格式，不再各拼一份
@@ -613,6 +856,8 @@
 
     return '<div class="ml-hero-label">' + label + '</div>' +
       num +
+      // 「时/分/秒」那一档本身就是秒级读数，再挂一行计时就是两个表在走
+      (mode === 'hms' ? '' : tickHtml(m, today)) +
       '<div class="ml-hero-meta">' + meta + '</div>' +
       barOf(ev, occ, today);
   }
@@ -804,6 +1049,9 @@
     // 详情页开着时内容也要跟着数据走（保存、归档、同步都可能改到同一条）。
     // 把刚算好的那一行直接传过去，省掉详情页再把农历/周年换算一遍。
     refreshDetail(findRow(all, state.detailId));
+
+    // 卡片重画过，秒级计时的节点也换了新的一批（设置关着时这一步什么都不做）
+    syncTick();
   }
 
   /* ================= 详情页 =================
@@ -961,13 +1209,15 @@
         '</span><span class="ml-detail-v">' + esc(r[1]) + '</span></div>';
     }).join('');
 
-    // 头部大卡片与列表置顶卡同一份结构（cardBodyHtml）：标签句 + 天数 + 日期 + 进度条
+    // 头部大卡片与列表置顶卡同一份结构（cardBodyHtml）：标签句 + 读数 + 日期 + 进度条。
+    // 详情这张多了「换档」：点一下在天 / 年·月·天 / 周·天 / 时·分·秒 之间轮换（见 cycleDetailUnit）
     var row = { ev: ev, occ: occ, metric: m, span: span, name: name };
 
     return '<div class="ml-detail-inner" style="--ml-rc:' + rgb + '">' +
-        '<section class="ml-hero ml-hero--detail">' +
+        '<section class="ml-hero ml-hero--detail" role="button" tabindex="0"' +
+            ' title="' + esc(t('detail.cycle')) + '">' +
           '<div class="ml-detail-tags">' + tags + '</div>' +
-          cardBodyHtml(row, today) +
+          cardBodyHtml(row, today, detailUnit) +
         '</section>' +
         '<div class="ml-detail-rows">' + rowsHtml + '</div>' +
         noteHtml +
@@ -990,6 +1240,8 @@
    */
   function renderDetail(row) {
     if (!state.detailId) return;
+    // 秒级计时被关掉时，「时/分/秒」那一档就没意义了（也没人给它跳秒），退回「天」
+    if (detailUnit === 'hms' && !tickOn()) detailUnit = 'd';
     var ev = row ? row.ev : detailEvent();
     if (!ev) { closeDetail(); return; }
     // 详情可能单独刷新（打开、保存、切语言），这里也要保证核心层拿到当前的农历设置
@@ -1035,6 +1287,8 @@
     var ev = findEventById(id);
     if (!ev) return;
     state.detailId = ev.id;
+    // 读数档不记忆：每次打开都从「天」开始
+    detailUnit = 'd';
     // 记住从哪一条点进来的：关闭后把焦点还回去，键盘用户不会掉回页面顶部
     state.detailFocus = document.activeElement;
     renderDetail();
@@ -1051,6 +1305,8 @@
     if (focusIn) {
       try { $('#mlDetailBack').focus(); } catch (e) { /* 聚焦失败不影响展示 */ }
     }
+    // 置顶卡被详情盖住了，秒表交给详情这一张（syncTick 只看看得见的那张卡片）
+    syncTick();
   }
 
   /** 详情打开时把主列表从 Tab 序列里摘出去（不支持 inert 的旧 WebView 上是个无害的属性） */
@@ -1080,6 +1336,8 @@
     if (back && typeof back.focus === 'function') {
       try { back.focus(); } catch (e) { /* 原来那条已经被删掉了 */ }
     }
+    // 秒表交回列表置顶卡（详情按自己的节奏滑走，不影响这张卡的计时）
+    syncTick();
   }
 
   /** 详情里的「编辑」：把表单叠在详情之上，关掉表单后仍回到详情 */
@@ -1297,7 +1555,7 @@
     if (!el) return;
     var kind = segValue('#fKind') || 'countdown';
     var n = (!state.editingId && kind === 'festival') ? selectedPresets().length : 0;
-    el.textContent = n > 1 ? t('saveN', { n: n }) : t('save');
+    el.textContent = n > 1 ? t('form.saveN', { n: n }) : t('save');
   }
 
   function refreshPresetHint() {
@@ -1523,6 +1781,7 @@
   function refreshSettingsForm() {
     var st = state.data.settings || Core.emptySettings();
     $('#sHero').checked = st.hero !== false;
+    $('#sTick').checked = st.tick === true;
     setSeg('#sLang', st.lang || 'auto');
 
     // 农历开关：数据里还有农历事项时锁死在「开」——
@@ -1984,6 +2243,18 @@
     $('#mlDetailBack').addEventListener('click', closeDetail);
     $('#mlDetailEdit').addEventListener('click', editFromDetail);
 
+    // 详情大卡片：点一下换一档读数（天 / 年·月·天 / 周·天 / 时·分·秒）。
+    // 委托在 #mlDetailBody 上，因为卡片内容每次重画都会换掉整棵子树
+    $('#mlDetailBody').addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('.ml-hero--detail')) cycleDetailUnit();
+    });
+    $('#mlDetailBody').addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      if (!e.target.closest || !e.target.closest('.ml-hero--detail')) return;
+      e.preventDefault();
+      cycleDetailUnit();
+    });
+
     $('#fKind').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
@@ -2059,6 +2330,9 @@
     });
     $('#sHero').addEventListener('change', function () {
       updateSetting('hero', this.checked);
+    });
+    $('#sTick').addEventListener('change', function () {
+      updateSetting('tick', this.checked);
     });
     // 有农历事项时不允许关（控件已 disabled，这里再兜一层：键盘/脚本改值同样拦下）
     $('#sLunar').addEventListener('change', function () {

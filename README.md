@@ -13,6 +13,7 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，数�
 | 两种时间口径 | 倒数与生日显示**剩余天数**（橙黄），纪念日显示**已过天数**（蓝绿） |
 | 时间排序 | 倒数越近越靠上，已过的越久越靠上；顶栏下的置顶卡片取当前分区的第一条 |
 | 置顶卡片 | 可在设置里关掉，关掉后列表直接贴顶，一屏多看几条 |
+| 秒级计时 | 设置里「秒级计时 → 大卡片显示时分秒」，**默认关闭**。打开后大卡片在天数下面补一行小一号的「04 时 20 分 15 秒」，每秒走一格；「今天」不显示（已经到点）、「后天」自动多算一整天。切到后台、卡片被详情盖住时自动停算 |
 | 农历开关 | 设置里「历法 → 启用农历系统」，**默认关闭**。关闭时界面、表单、节日预设里都没有农历；打开后日期按来源写作「公历（农历）」或「农历（公历）」 |
 | 农历支持 | 打开后，农历生日 / 纪念日自动换算，每次打开都是当年对应的公历日期 |
 | 到期提醒进任务列表 | 每个事项可以单独选择是否生成任务；打开就插入相关任务，关闭就删除相关任务 |
@@ -30,7 +31,7 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，数�
 
 1. 打开 Super Productivity → `设置` → `插件`
 2. 点击 `Choose Plugin File`（选择插件文件）
-3. 选中 `releases/sp-milestone-v1.1.0.zip`
+3. 选中 `releases/sp-milestone-v1.2.0.zip`
 4. 安装后，需要**开启插件**，左侧导航出现 `Milestone` 入口（入口名固定不翻译，见文末「命名约定」）
 
 > 不需要解压 ZIP。网页版因浏览器跨域限制无法自动下载，请手动下载 ZIP 后用同样方式安装。
@@ -41,7 +42,8 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，数�
 - **农历是设置里的一项开关，默认关闭**：关闭时界面里不出现任何农历（只有公历日期，表单里没有「历法」，节日预设只剩公历分组）；打开后，选择「农历」用年 / 月 / 日三个下拉框指定农历日期，下方会实时显示对应公历、干支与生肖
 - 打开农历后，日期按**录入时的历法**决定顺序：公历录入的写「2026-05-12（农历四月初五）」，农历录入的写「农历四月初五（2026-05-12）」
 - **已经有农历事项时不能关闭农历开关**：关掉会让这些记录只剩公历、也改不了历法，所以设置里会锁住开关并说明原因；删掉这些事项后即可关闭
-- **点任意条目先进入详情页**（只读）：顶部是与列表置顶卡**同一套大卡片**（「距离…还有 / 已经走过」+ 天数 + 周期进度条），下面的信息行按类型说人话 —— 日期那一行的叫法随类型走（生日「出生日期」、纪念日「那一天」、倒数日「目标日期」、节日「节日日期」），生日下面再给一行「N岁生日」、纪念日再给一行「N 周年时间」并附「已过 / 已满」；归档的事项末尾多一行「状态：已归档」。类型不再单列 —— 它在卡片标签上。要点右上角「编辑」才会打开表单，改完保存仍停在详情，点左上角「返回」回列表
+- **点任意条目先进入详情页**（只读）：顶部是与列表置顶卡**同一套大卡片**（「距离…还有 / 已经走过」+ 天数 + 周期进度条），下面的信息行按类型说人话 —— 日期那一行的叫法随类型走（生日「出生日期」、纪念日「那一天」、倒数日「目标日期」、节日「节日日期」），生日下面再给一行「N岁生日」、纪念日再给一行「N 周年」并附「已过 / 已满」；归档的事项末尾多一行「状态：已归档」。类型不再单列 —— 它在卡片标签上。要点右上角「编辑」才会打开表单，改完保存仍停在详情，点左上角「返回」回列表
+- **在详情页点一下大卡片，读数会换档**：天 → 年 / 月 / 天 → 周 / 天 → 时 / 分 / 秒（最后这档要先打开设置里的「秒级计时」）。只切换不记忆，关掉重开回到「天」
 - **进度条只给生日和纪念日**：两者都是一年一轮，可以画「本周年已过 / 还剩」；节日与倒数日只有「还有 N 天」一个语义，不画进度条
 - 在详情页里可以删除（编辑表单底部的「删除该事项」）
 - 顶部筛选条可按类型过滤；**「归档」是单独一个视图**
@@ -147,6 +149,8 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 | Two time metrics | Countdowns and birthdays show **days left** (amber), anniversaries show **days passed** (teal) |
 | Sorting | Sooner countdowns on top, older anniversaries on top; the featured card takes the first entry of the current category |
 | Featured card | Can be switched off in settings, then the list starts at the very top |
+| Seconds timer | Settings → "Seconds → Show hh:mm:ss on the big card", **off by default**. When on, the card adds a slightly smaller "04h 20m 15s" line under the day number that ticks once a second (hidden for "today", plus a full day for "the day after tomorrow"); it stops while the page is hidden or the card is covered |
+| Tap the detail card | Cycles the reading in the detail page: days → y / mo / d → w / d → h / m / s (the last one requires the seconds timer). Not remembered — reopening starts from days |
 | Lunar switch | **Off by default.** Off: no lunar anywhere (list, details, form, presets). On: dates read "Gregorian (lunar)" or "lunar (Gregorian)" depending on how the entry was entered |
 | Lunar support | With the switch on, lunar birthdays / anniversaries are converted automatically, so every launch shows this year's Gregorian date |
 | Reminders as tasks | Every entry decides on its own whether to create a task; on = inserted, off = deleted |
@@ -162,7 +166,7 @@ A Super Productivity plugin for countdowns, anniversaries, birthdays and festiva
 
 1. Open Super Productivity → `Settings` → `Plugins`
 2. Click `Choose Plugin File`
-3. Select `releases/sp-milestone-v1.1.0.zip`
+3. Select `releases/sp-milestone-v1.2.0.zip`
 4. After installing, **enable the plugin** — a "Milestone" entry appears in the left navigation
 
 > No need to unzip. The web version cannot download automatically because of browser CORS rules — download the ZIP manually and install it the same way.

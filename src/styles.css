@@ -215,6 +215,82 @@ input, select, textarea {
 
 .ml-hero-meta .sep { opacity: 0.45; }
 
+/* 详情大卡片的另外三档读数（点一下换一档）：年 / 月 / 天、周 / 天、时 / 分 / 秒。
+   段数多了就得收字号，但收多少看这一档的位数：
+     · 年/月/天、周/天 只有两三位数 → 56px，比计时行（44px）大一档，层级仍然清楚
+     · 时/分/秒 是「总小时数」，八年的纪念日就是 73390 时 → 40px 才排得进卡片，
+       这一档本身就在走秒，不再另挂计时行，所以整张卡片只有它一行大字 */
+.ml-hero-num--parts {
+  gap: 5px;
+  font-size: 56px;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+.ml-hero-num--parts span {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* data-ts 是「时/分/秒」那一档的标记（它要交给秒表每秒刷） */
+.ml-hero-num--parts[data-ts] {
+  font-size: 40px;
+  letter-spacing: -0.02em;
+}
+
+.ml-hero-num--parts[data-ts] span { font-size: 15px; }
+
+/* 秒级计时（设置里可开，默认关）：紧跟在大数字下面，比「天」小一号。
+   时 / 分 / 秒 三个数字一样大；单位字再收一档，和「天」同一个处理，读数才不会被单位撑散。
+   数字用大数字的语义色压到 68%（同色系、淡一档），单位字用「天」那个灰 ——
+   两行一深一浅，谁主谁次一眼看得出来，也不会读成两个并列的主标题。
+   等宽数字 + tnum，每秒跳一下时整行不会左右抖 */
+.ml-hero-tick {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 44px;
+  line-height: 1.06;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--ml-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* 一个数绝不从中间断开（万一极窄面板上放不下，宁可整块溢出也别显示成「4 / 5」） */
+.ml-hero-tick b, .ml-hero-tick span { white-space: nowrap; }
+
+.ml-hero-tick[data-up='0'] b { color: var(--ml-remain); opacity: 0.68; }
+.ml-hero-tick[data-up='1'] b { color: var(--ml-elapsed); opacity: 0.68; }
+
+/* 单位字比数字轻得多，颜色用和「天」同一个灰：透明度只压数字，
+   小字（15px）再压就糊了，而它正是把「数字」读成时间的那个词 */
+.ml-hero-tick span {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ml-muted);
+}
+
+/* 有计时行时，日期行和它拉开一点，别挤成一块小字 */
+.ml-hero-tick + .ml-hero-meta { margin-top: 8px; }
+
+/* 窄面板（320 宽的机器、嵌在侧栏里的 iframe）：
+   「时/分/秒」那一档按 40px 排要 270px，卡片内宽（视口 - 44px 内边距）只剩 276px，
+   贴着边界，再窄一点就折行 —— 折行比缩小难看得多，各档一起再收一档 */
+@media (max-width: 340px) {
+  .ml-hero-num--parts { font-size: 48px; gap: 4px; }
+  .ml-hero-num--parts span { font-size: 15px; }
+  .ml-hero-num--parts[data-ts] { font-size: 34px; }
+  .ml-hero-num--parts[data-ts] span { font-size: 13px; }
+  .ml-hero-tick { font-size: 38px; gap: 3px; }
+  .ml-hero-tick span { font-size: 13px; }
+}
+
 .ml-bar {
   margin-top: 16px;
   height: 4px;
@@ -538,6 +614,11 @@ html[data-ml-theme='dark'] .ml-tag--muted {
 /* 详情页头部就是置顶卡那一套（.ml-hero），只是顶上多一排类型标签 */
 .ml-hero--detail .ml-detail-tags { margin-bottom: 10px; }
 
+/* 详情这张可以点：换一档读数（天 / 年·月·天 / 周·天 / 时·分·秒）。
+   卡片本身是整块可点的，鼠标给个 pointer 提示，键盘给一圈焦点环 */
+.ml-hero--detail { cursor: pointer; }
+.ml-hero--detail:focus-visible { outline: 2px solid var(--ml-accent); outline-offset: 2px; }
+
 .ml-detail-tags {
   display: flex;
   flex-wrap: wrap;
@@ -563,10 +644,14 @@ html[data-ml-theme='dark'] .ml-tag--muted {
 
 .ml-detail-row + .ml-detail-row { border-top: 1px solid var(--ml-border); }
 
+/* 标签列：短标签按 4.2em 对齐；比这更长的（「12 周年」这种多位数）整列让开，
+   宁可让这一行的取值右移一点，也不能把「周年」两个字拆成两行 —— 折行比略歪更难读。
+   用 min-width 而不是 width：width 配 nowrap 会让文字溢出到右侧取值上去 */
 .ml-detail-k {
   flex: 0 0 auto;
-  width: 4.2em;
+  min-width: 4.2em;
   color: var(--ml-muted);
+  white-space: nowrap;
 }
 
 .ml-detail-v {
