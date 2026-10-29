@@ -154,7 +154,7 @@ eq(Core.FESTIVALS.filter((f) => f.key === 'zhongqiu')[0].name, 'Mid-Autumn Festi
 eq(Core.WEEK[1], 'Mon', '星期名随语言切换');
 ok(Core.dateLabel({ calendar: 'lunar', lunar: { month: 8, day: 15 }, date: '2026-09-25' }).indexOf('Lunar') !== -1,
   '农历文案切换成英文');
-eq(Core.titleOf({ title: 'Mom', kind: 'birthday' }, 55), 'Mom (turning 55)', '年龄后缀切换成英文');
+eq(Core.titleOf({ title: 'Mom', kind: 'birthday' }, 55), "Mom's birthday (turning 55)", '年龄后缀切换成英文');
 // 标签名是宿主机里的实体标识，必须与语言无关：否则切一次语言就多一个同名标签
 eq(Core.emptySettings().taskTag, 'milestone', '标签名不随语言变（英文）');
 Core.setLang('zh');

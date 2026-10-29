@@ -29,13 +29,13 @@ const SEED = {
   // 固定中文：jsdom 的 navigator.language 是 en-US，不写这一项界面会是英文
   settings: { lang: 'zh' },
   events: [
-    { id: 'b1', title: '妈妈生日', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
+    { id: 'b1', title: '妈妈', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
       lunar: { year: 1968, month: 4, day: 18, isLeap: false }, repeat: true, color: '#d6336c', note: '' },
     // 出生年取闰年 2000，这样 2 月 29 日运行时这个日期也成立
-    { id: 'b2', title: '小米生日', kind: 'birthday', calendar: 'solar', date: '2000-' + TODAY_MD,
+    { id: 'b2', title: '小米', kind: 'birthday', calendar: 'solar', date: '2000-' + TODAY_MD,
       repeat: true, color: '#f59f00', note: '' },
     { id: 'b3', title: '结婚纪念日', kind: 'anniversary', calendar: 'solar', date: '2018-06-16',
-      repeat: true, color: '#c92a2a', note: '' },
+      repeat: true, color: '#c92a2a', note: '每年这天回老地方吃饭\n记得提前订位' },
     { id: 'b4', title: '项目上线', kind: 'countdown', calendar: 'solar', date: '2026-12-01',
       repeat: false, color: '#1c7ed6', note: '' },
     { id: 'b5', title: '昨天的事', kind: 'anniversary', calendar: 'solar', date: Core.ymd(YESTERDAY),
@@ -92,6 +92,32 @@ const document = window.document;
 const $ = (s) => document.querySelector(s);
 const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
 
+/** 详情页里某一行的值（按左侧标签找） */
+const detailRow = (label) => {
+  const rows = Array.from(document.querySelectorAll('#mlDetailBody .ml-detail-row'));
+  const hit = rows.find((r) => r.querySelector('.ml-detail-k').textContent === label);
+  return hit ? hit.querySelector('.ml-detail-v').textContent : null;
+};
+
+/** 点条目 → 详情页 → 点右上角「编辑」进表单；列表点击已不再直接打开表单 */
+async function editEntry(target) {
+  if (target && target.click) target.click();
+  else byId(target).click();
+  await wait(120);
+  const btn = $('#mlDetailEdit');
+  if (!btn || $('#mlDetailLayer').hidden) return false;
+  btn.click();
+  await wait(180);
+  return true;
+}
+
+/** 关掉详情页：编辑保存后仍停在详情，要回到列表得先「返回」 */
+async function backToList() {
+  if ($('#mlDetailLayer').hidden) return;
+  $('#mlDetailBack').click();
+  await wait(380);
+}
+
 (async function run() {
   await new Promise((r) => {
     if (document.readyState === 'complete') r();
@@ -105,13 +131,24 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   eq($('.ml-sub').textContent,
     '6 个事项 · ' + (todayCount ? '今天 ' + todayCount + ' 个' : '最近 ' + nearest.r.days + ' 天'),
     '副标题统计');
-  ok($('.ml-hero-label').textContent.includes(nearest.e.title), '最近的事项在卡片上');
+  ok($('.ml-hero-label').textContent.includes(Core.titleOf(nearest.e, Core.ageAt(nearest.e, nearest.r, TODAY))),
+    '最近的事项在卡片上（名称含年龄与「生日」）');
   eq(document.querySelectorAll('.ml-item.is-today').length, todayCount, '今天条目高亮数量');
+
+  // 生日的进度条反过来画：显示还剩多少，越接近生日越短
+  eq(nearest.e.kind, 'birthday', '种子里的最近事项是生日（今天）');
+  const heroBar = $('.ml-hero .ml-bar');
+  ok(!!heroBar, '主视觉卡片上有进度条');
+  ok(heroBar.classList.contains('ml-bar--left'), '生日进度条走「还剩」方向');
+  eq(heroBar.querySelector('i').style.width, '0%', '生日当天剩余进度为 0%');
+  const barText = $('.ml-hero .ml-bar-text').textContent;
+  eq(barText.includes(Core.ageOn(nearest.e, TODAY) + '岁还有 0%'), true,
+    '文案是「此刻几岁还有 0%」（此刻年龄比标题里的少一岁）');
 
   const subs = Array.from(document.querySelectorAll('.ml-item-sub')).map((n) => n.textContent);
   const titles = Array.from(document.querySelectorAll('.ml-item-title em')).map((n) => n.textContent);
   ok(subs.some((t) => t.includes('农历四月十八')), '农历条目显示农历日期');
-  ok(titles.some((t) => /（\d+岁）$/.test(t)), '生日名称带年龄（如「小米生日（7岁）」）');
+  ok(titles.some((t) => /生日（\d+岁）$/.test(t)), '生日名称带年龄（如「小米生日（7岁）」）');
   ok(!subs.some((t) => t.includes('岁')), '年龄不再重复出现在副标题');
   ok(subs.some((t) => t.includes('周年')), '纪念日显示周年');
 
@@ -161,10 +198,10 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   ok(nums.slice(firstElapsed).every((n) => n.mode === 'elapsed'), '后半段全部是已过天数');
   ok(nums.slice(0, firstElapsed).every((n, i, a) => i === 0 || a[i - 1].days <= n.days), '剩余天数升序（越近越前）');
   ok(nums.slice(firstElapsed).every((n, i, a) => i === 0 || a[i - 1].days >= n.days), '已过天数降序（越久越前）');
-  ok(nums.filter((n) => n.mode === 'remain').every((n) => n.unit === '剩余天数' || n.word !== ''),
-    '倒数类单位是剩余天数（三天内改说今天/明天/后天）');
-  ok(nums.filter((n) => n.mode === 'elapsed').every((n) => n.unit === '已过天数' || n.unit === '就在今天'), '纪念类单位是已过天数');
-  eq(nums.find((n) => n.id === 'b3').unit, '已过天数', '纪念日显示已过天数');
+  ok(nums.filter((n) => n.mode === 'remain').every((n) => n.unit === '天' || n.word !== ''),
+    '倒数类单位只说「天」（三天内改说今天/明天/后天）');
+  ok(nums.filter((n) => n.mode === 'elapsed').every((n) => n.unit === '天' || n.unit === '就在今天'), '纪念类单位只说「天」');
+  eq(nums.find((n) => n.id === 'b3').unit, '天', '纪念日显示「天」');
   eq(nums.find((n) => n.id === 'b3').mode, 'elapsed', '纪念日归入已过组');
   // 纪念日的已过天数 = 从最初日期到今天
   eq(nums.find((n) => n.id === 'b3').days, Core.diffDays(Core.parseYMD('2018-06-16'), TODAY), '已过天数按原始日期计算');
@@ -186,11 +223,54 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   await wait(40);
   eq(document.querySelectorAll('.ml-item').length, 6, '回到全部');
 
-  console.log('[4] 打开农历条目');
+  console.log('[3.5] 点击条目先进入详情（只读），再点编辑');
   byId('b1').click();
   await wait(150);
+  eq($('#mlDetailLayer').hidden, false, '详情页打开');
+  eq($('#mlLayer').hidden, true, '编辑表单还没打开（详情是只读的）');
+  ok(/妈妈生日（\d+岁）/.test($('#mlDetailBody').textContent), '详情显示名称（「生日」在前、年龄收尾）');
+  eq(detailRow('类型'), null, '不再单列类型：卡片顶部已有标签');
+  eq(detailRow('历法'), null, '不再单列历法：日期 / 农历两行已经说清');
+  ok(/农历四月十八/.test(detailRow('农历')), '详情显示农历日期：' + detailRow('农历'));
+  ok(/属/.test(detailRow('农历')), '农历记录显示干支生肖：' + detailRow('农历'));
+  ok(/任务/.test(detailRow('提醒')), '详情显示提醒渠道：' + detailRow('提醒'));
+  eq(detailRow('状态'), null, '正常状态不占一行（只有归档才显示）');
+  ok(!!$('#mlDetailBody .ml-hero-num'), '详情有天数大数字（与置顶卡同一套）');
+  eq($('#fTitle').value, '', '详情页不把数据填进表单');
+
+  // 右上角编辑才进表单
+  $('#mlDetailEdit').click();
+  await wait(200);
+  eq($('#mlLayer').hidden, false, '点编辑后表单打开');
+  eq($('#fTitle').value, '妈妈', '表单已填充（名称里只留人）');
+  // 取消 → 回到详情，而不是退回列表
+  $('#mlCancel').click();
+  await wait(400);
+  eq($('#mlLayer').hidden, true, '取消后表单收起');
+  eq($('#mlDetailLayer').hidden, false, '取消编辑仍停在详情');
+  // 返回 → 回到列表
+  await backToList();
+  eq($('#mlDetailLayer').hidden, true, '点返回回到列表');
+
+  console.log('[3.6] 已过语义的详情：「上次」指向起算日');
+  byId('b3').click();
+  await wait(150);
+  eq(detailRow('类型'), null, '纪念日详情同样不列类型');
+  ok(detailRow('上次').indexOf('2018-06-16') === 0, '「上次」是起算日，不是下次发生日：' + detailRow('上次'));
+  ok(/已过 \d+ 天/.test(detailRow('上次')), '配「已过 N 天」：' + detailRow('上次'));
+  ok(/周年/.test(detailRow('已满')), '显示已满周年与零头：' + detailRow('已满'));
+  // 备注：单独成块并保留换行，而不是挤进「类型 / 日期」那种键值行
+  eq(detailRow('备注'), null, '备注不再混在键值行里');
+  ok(!!$('#mlDetailBody .ml-detail-note'), '备注有独立的块');
+  ok(/每年这天回老地方吃饭/.test($('#mlDetailBody .ml-detail-note').textContent), '详情显示备注正文');
+  ok(/记得提前订位/.test($('#mlDetailBody .ml-detail-note').textContent), '换行后的第二行也在');
+  await backToList();
+
+  console.log('[4] 打开农历条目');
+  await editEntry('b1');
+  await wait(150);
   eq($('#mlLayer').hidden, false, '弹层打开');
-  eq($('#fTitle').value, '妈妈生日', '标题已填充');
+  eq($('#fTitle').value, '妈妈', '标题已填充（名称里只留人）');
   eq($('#mlDelete').hidden, false, '编辑态显示删除');
   eq(document.querySelectorAll('#fKind button[aria-pressed="true"]')[0].dataset.v, 'birthday', '类型回填');
   eq(document.querySelectorAll('#fCalendar button[aria-pressed="true"]')[0].dataset.v, 'lunar', '历法回填');
@@ -236,9 +316,13 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   eq(mom.color, Core.COLORS[3], '颜色已写入');
   eq(mom.lunar.month, 5, '农历月份已写入');
   ok(/^\d{4}-\d{2}-\d{2}$/.test(mom.date), '公历日期已同步计算');
+  // 保存后回到详情（不是直接回列表），且详情已经换成新数据
+  eq($('#mlDetailLayer').hidden, false, '保存后仍停在详情页');
+  ok($('#mlDetailBody').textContent.includes('妈妈生日（改正）'), '详情立即显示新名称');
+  await backToList();
 
   console.log('[8] 每个事项的提醒渠道');
-  byId('b4').click();
+  await editEntry('b4');
   await wait(150);
   eq($('#fTask').checked, true, '默认加入任务列表');
   eq($('#fSnack').checked, false, '默认不弹提示条');
@@ -275,6 +359,7 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   eq(withRemind.remind.offsets.join(','), '7', '提醒天数已写入');
   eq(withRemind.archived, false, '未归档已写入');
   eq(document.querySelectorAll('.ml-bell').length, 6, '还有一个渠道开着 → 铃铛仍在');
+  await backToList();
 
   console.log('[9] 新增记录');
   $('#mlAdd').click();
@@ -310,19 +395,22 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   eq(saved2.events[saved2.events.length - 1].title, xssTitle, '名称按纯文本保存');
 
   console.log('[10] 删除（用户取消）');
-  byId('b4').click();
+  await editEntry('b4');
   await wait(150);
   $('#mlDelete').click();
   await wait(300);
   eq(document.querySelectorAll('.ml-item').length, 7, '取消后不删除');
+  eq($('#mlDetailLayer').hidden, false, '取消删除仍停在详情');
+  await backToList();
 
   console.log('[11] 删除（用户确认）');
   window.__answer = '删除';
-  byId('b4').click();
+  await editEntry('b4');
   await wait(150);
   $('#mlDelete').click();
-  await wait(400);
+  await wait(500);
   eq(document.querySelectorAll('.ml-item').length, 6, '确认后删除成功');
+  eq($('#mlDetailLayer').hidden, true, '条目被删后详情自动退回列表');
 
   console.log('[12] 远程同步');
   const remote = JSON.parse(JSON.stringify(JSON.parse(window.__STORE__)));
@@ -375,9 +463,9 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   $('#fTitle').value = '测试生日（30岁）';
   $('#mlSave').click();
   await wait(450);
-  const cleaned = JSON.parse(window.__STORE__).events.filter((e) => /测试生日/.test(e.title))[0];
-  eq(cleaned.title, '测试生日', '输入的年龄后缀不写入名称');
-  ok($('.ml-list').textContent.includes('测试生日（'), '列表仍显示年龄');
+  const cleaned = JSON.parse(window.__STORE__).events.filter((e) => /测试/.test(e.title))[0];
+  eq(cleaned.title, '测试', '名称里只留人：年龄与「生日」都不写入');
+  ok(/测试生日（\d+岁）/.test($('.ml-list').textContent), '列表仍显示年龄，「生日」在前、年龄在后');
 
   console.log('[14] 归档');
   ok(!!$('#mlSettings'), '顶栏有设置入口');
@@ -388,7 +476,7 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   eq(document.querySelector('.ml-chip[data-f="archive"]').textContent, '归档', '没有归档项时胶囊只显示「归档」');
 
   // 归档「结婚纪念日」
-  byId('b3').click();
+  await editEntry('b3');
   await wait(150);
   eq($('#fArchived').checked, false, '默认未归档');
   $('#fArchived').click();
@@ -396,10 +484,13 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   ok($('#fRemindHint').textContent.includes('已归档'), '归档时说明变为不再提醒');
   $('#mlSave').click();
   await wait(450);
+  await backToList();
 
   eq(document.querySelectorAll('.ml-item').length, total - 1, '归档后不在「全部」里显示');
   ok(!byId('b3'), '归档的条目移出当前列表');
-  eq(document.querySelector('.ml-chip[data-f="archive"]').textContent, '归档 1', '筛选条显示归档数量');
+  // 胶囊只做入口，不挂数量（数字在副标题里）
+  eq(document.querySelector('.ml-chip[data-f="archive"]').textContent, '归档', '归档胶囊不带数量');
+  ok($('.ml-sub').textContent.includes('归档 1'), '归档数量改由副标题说明：' + $('.ml-sub').textContent);
 
   // 通过筛选胶囊进入归档视图
   document.querySelector('.ml-chip[data-f="archive"]').click();
@@ -411,6 +502,12 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   ok($('#mlHero').innerHTML.includes('ml-hero--empty'), '归档视图用占位卡，不置顶任何事项');
   ok(document.querySelector('.ml-list').textContent.includes('已归档 · 纪念日'), '条目带已归档标签');
 
+  // 归档的事项才写状态行：正常状态不显示
+  byId('b3').click();
+  await wait(150);
+  eq(detailRow('状态'), '已归档', '归档后详情显示「状态：已归档」');
+  await backToList();
+
   // 归档视图里新建：默认就是归档状态
   $('#mlAdd').click();
   await wait(150);
@@ -419,12 +516,13 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   await wait(380);
 
   // 取消归档 → 回到「全部」
-  byId('b3').click();
+  await editEntry('b3');
   await wait(150);
   $('#fArchived').click();
   await wait(40);
   $('#mlSave').click();
   await wait(450);
+  await backToList();
   eq(document.querySelector('.ml-chip[data-f="archive"]').textContent, '归档', '没有归档项后计数消失');
   eq(document.querySelectorAll('.ml-item').length, 0, '取消归档后归档视图为空');
   document.querySelector('.ml-chip[data-f="all"]').click();
@@ -590,8 +688,8 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   ok($('.ml-list').textContent.includes('中秋节'), '节日在列表中');
   eq(document.querySelector('.ml-item .ml-tag').textContent, '节日', '条目标签显示节日');
   ok($('.ml-hero-label').textContent.includes('还有'), '节日按剩余天数倒数');
-  eq(document.querySelector('.ml-item-num i').textContent === '剩余天数' ||
-    document.querySelector('.ml-item-num i').textContent === '就是今天', true, '单位是剩余天数');
+  eq(document.querySelector('.ml-item-num i').textContent === '天' ||
+    document.querySelector('.ml-item-num i').textContent === '就是今天', true, '单位是「天」');
   ok($('.ml-sub').textContent.includes('节日'), '副标题按「节日」计数');
 
   // 自定义节日
@@ -759,7 +857,7 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   eq(byId(expired.id).querySelector('.ml-item-title em').textContent, '去年年会', '名称文字完整');
   ok(!!byId(expired.id).querySelector('.ml-item-name--done span'), '过期倒数日名称加删除线（画在内层 span 上）');
   eq(byId(expired.id).querySelector('.ml-tag').textContent, '过期的倒数日', '过期后标签改为「过期的倒数日」');
-  eq(byId(expired.id).querySelector('.ml-item-num i').textContent, '已过天数', '过期后显示已过天数');
+  eq(byId(expired.id).querySelector('.ml-item-num i').textContent, '天', '过期后仍只说「天」');
 
   // 过期即划掉，没有开关可关
   $('#mlSettings').click();
@@ -790,7 +888,7 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
   const repeatEv = JSON.parse(window.__STORE__).events.filter((e) => e.title === '每年年会')[0];
   ok(!!repeatEv && repeatEv.repeat === true, '重复倒数日已保存');
   ok(!byId(repeatEv.id).querySelector('.ml-item-name--done'), '开启了重复的过期日期不加删除线');
-  eq(byId(repeatEv.id).querySelector('.ml-item-num i').textContent, '剩余天数', '重复倒数日按剩余天数显示');
+  eq(byId(repeatEv.id).querySelector('.ml-item-num i').textContent, '天', '重复倒数日只说「天」');
 
   // 生日/纪念日/节日不受影响
   ok(!document.querySelector('.ml-item[data-id="b2"] .ml-item-name--done'), '生日不加删除线');
@@ -888,7 +986,7 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
     eq($3('.ml-chip[data-f="all"]').textContent, 'All', '筛选条为英文');
     ok($3('.ml-sub').textContent.indexOf('1 entry') === 0, '副标题用英文单数：' + $3('.ml-sub').textContent);
     ok($3('.ml-hero-label').textContent.indexOf('in') !== -1, '置顶卡片文案为英文');
-    ok($3('.ml-item-num i').textContent === 'days left' || $3('.ml-item-num i').textContent === 'today',
+    ok($3('.ml-item-num i').textContent === 'days' || $3('.ml-item-num i').textContent === 'today',
       '天数单位英文化');
     eq($3('.ml-tag').textContent, 'Birthday', '类型标签英文化');
 
@@ -1008,6 +1106,9 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
 
     $5('.ml-item[data-id="cx"]').click();
     await new Promise((r) => setTimeout(r, 200));
+    eq($5('#mlLayer').hidden, true, '先停在详情，不直接进表单');
+    $5('#mlDetailEdit').click();
+    await new Promise((r) => setTimeout(r, 220));
     eq($5('#mlLayer').hidden, false, '弹层打开');
     eq($5('#fLD').value, '29', '农历日控件回填为该月最后一天，不留空值');
     ok(!$5('#fLunarPreview').className.includes('warn'), '预览不报「日期不存在」：' + $5('#fLunarPreview').textContent);
@@ -1069,7 +1170,7 @@ const byId = (id) => document.querySelector('.ml-item[data-id="' + id + '"]');
     ok(cell('d0').word && cell('d1').word && cell('d2').word, '三条都走文字样式');
     eq(cell('d0').unit + cell('d1').unit + cell('d2').unit, '', '文字状态不再显示单位行');
     eq(cell('d3').text, '3', '剩余 3 天仍显示数字');
-    eq(cell('d3').unit, '剩余天数', '3 天以上保留「剩余天数」单位');
+    eq(cell('d3').unit, '天', '3 天以上单位说「天」');
     eq(cell('d5').text, '5', '更远的天数照旧');
     eq(cell('bd1').text, '明天', '生日同样适用（剩余语义一致）');
 

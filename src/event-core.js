@@ -538,24 +538,38 @@
   }
 
   /**
-   * 清洗名称：去掉误写进名称里的年龄后缀
-   * 年龄不进数据，只在渲染时拼接，这里做兜底防止「（55岁）（55岁）」叠加
+   * 清洗名称：生日的名称里只留人，年龄与「生日」二字都由界面拼
+   * 年龄与「生日」都不进数据，所以入库前先摘掉 —— 否则会渲染成
+   * 「妈妈生日（55岁）生日」「妈妈（55岁）（55岁）生日」
    */
   function cleanTitle(kind, title) {
     var s = typeof title === 'string' ? title : '';
     if (kind !== 'birthday') return s;
-    return s.replace(/[（(]\s*\d{1,3}\s*岁\s*[)）]\s*$/, '').trim();
+    return s
+      .replace(/[（(]\s*\d{1,3}\s*岁\s*[)）]\s*$/, '')
+      .replace(/(的|['’]s)?\s*birthday\s*$/i, '')
+      .replace(/的?\s*生日\s*$/, '')
+      .trim();
   }
 
   /**
-   * 展示用名称：生日把年龄并进名字后面，如「我妈生日（55岁）」
+   * 展示用名称：生日说成「名字（55岁）生日」，年龄放中间、「生日」收尾
+   * 例：title「妈妈」+ age 55 → 「妈妈（55岁）生日」；农历、英文同理
    */
   function titleOf(ev, age) {
-    var base = ev.title || KINDS[ev.kind];
-    if (ev.kind === 'birthday' && age !== null && age !== undefined && age >= 0) {
-      return base + I.t('age.suffix', { n: age });
+    var hasAge = age !== null && age !== undefined && age >= 0;
+    var base = cleanTitle(ev.kind, ev.title);
+
+    if (ev.kind === 'birthday') {
+      // 名字是空的（理论上必填拦得住，导入数据可能没有）：只说「生日（55岁）」
+      if (!base) return hasAge ? KINDS[ev.kind] + I.t('age.suffix', { n: age }) : KINDS[ev.kind];
+      return I.t('name.birthday', {
+        name: base,
+        age: hasAge ? I.t('age.suffix', { n: age }) : ''
+      });
     }
-    return base;
+
+    return base || KINDS[ev.kind] || I.t('kind.generic');
   }
 
   /**
@@ -597,8 +611,13 @@
     return out;
   }
 
-  /** 当前周期已过百分比（用于进度条），仅在每年重复时有意义 */
-  function cycleProgress(ev, occ, today) {
+  /**
+   * 当前周期的长度与位置（进度条用），仅在每年重复时有意义
+   *   total 上一回到这一回的天数 / done 已经过去的天数 / left 还剩下的天数
+   * 生日要用 left 画（越接近生日越短），其余事项用 done 画，所以两个都留着
+   * @returns {{total:number, done:number, left:number, ratio:number}|null}
+   */
+  function cycleInfo(ev, occ, today) {
     if (!ev.repeat || !occ || !occ.date || occ.days < 0) return null;
     var prev;
     if (ev.term && TERMS[ev.term]) {
@@ -615,8 +634,15 @@
     if (!prev) return null;
     var total = diffDays(prev, occ.date);
     if (total <= 0) return null;
-    var done = diffDays(prev, startOfDay(today || new Date()));
-    return Math.max(0, Math.min(1, done / total));
+    var left = Math.max(0, Math.min(total, diffDays(startOfDay(today || new Date()), occ.date)));
+    var done = total - left;
+    return { total: total, done: done, left: left, ratio: done / total };
+  }
+
+  /** 当前周期已过百分比（0-1），仅在每年重复时有意义 */
+  function cycleProgress(ev, occ, today) {
+    var info = cycleInfo(ev, occ, today);
+    return info ? info.ratio : null;
   }
 
   /** 「2027-05-12 · 农历四月十一」 */
@@ -742,6 +768,7 @@
     cleanTitle: cleanTitle,
     hasReminder: hasReminder,
     dueReminders: dueReminders,
+    cycleInfo: cycleInfo,
     cycleProgress: cycleProgress,
     dateLabel: dateLabel,
     zodiacLabel: zodiacLabel,

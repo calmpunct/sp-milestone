@@ -139,11 +139,11 @@ eq(Core.zodiacLabel(lunarEv), '庚午年 · 属马', '生肖文案');
 console.log('[7] 年龄并入名称');
 const mom = mk({ title: '我妈生日', date: '1971-05-14' });
 eq(Core.ageOn(mom, TODAY), 55, '生日已过 -> 55 岁');
-eq(Core.titleOf(mom, Core.ageOn(mom, TODAY)), '我妈生日（55岁）', '名称带年龄');
+eq(Core.titleOf(mom, Core.ageOn(mom, TODAY)), '我妈生日（55岁）', '名称带年龄，年龄收尾');
 
 const kid = mk({ title: '小米', date: '2019-11-08' });
 eq(Core.ageOn(kid, TODAY), 6, '生日未到 -> 6 岁');
-eq(Core.titleOf(kid, Core.ageOn(kid, TODAY)), '小米（6岁）', '名称带年龄（未到生日）');
+eq(Core.titleOf(kid, Core.ageOn(kid, TODAY)), '小米生日（6岁）', '名称带年龄（未到生日）');
 
 const onDay = mk({ title: '当天', date: '2019-10-26' });
 eq(Core.ageOn(onDay, TODAY), 7, '生日当天即为新年龄');
@@ -156,7 +156,7 @@ eq(Core.titleOf(mom, Core.ageAt(mom, momOcc, TODAY)), '我妈生日（56岁）',
 
 const kidOcc = Core.nextOccurrence(kid, TODAY);
 eq(Core.ageAt(kid, kidOcc, TODAY), 7, '生日未到：今天 6，这次过 7');
-eq(Core.titleOf(kid, Core.ageAt(kid, kidOcc, TODAY)), '小米（7岁）', '名称用这次生日的年龄（未到生日）');
+eq(Core.titleOf(kid, Core.ageAt(kid, kidOcc, TODAY)), '小米生日（7岁）', '名称用这次生日的年龄（未到生日）');
 
 eq(Core.ageAt(onDay, Core.nextOccurrence(onDay, TODAY), TODAY), 7, '生日当天：今天多大就过多少岁');
 eq(Core.ageAt(mk({ date: '2000-02-29' }), Core.nextOccurrence(mk({ date: '2000-02-29' }), TODAY), TODAY), 27,
@@ -185,23 +185,48 @@ eq(Core.titleOf(mk({ title: '妈妈生日', calendar: 'lunar', lunar: { year: 19
 
 // 尚未出生
 eq(Core.ageOn(mk({ date: '2030-01-01' }), TODAY), null, '未来日期无年龄');
-eq(Core.titleOf(mk({ title: '未来', date: '2030-01-01' }), null), '未来', '无年龄时不加括号');
+eq(Core.titleOf(mk({ title: '未来', date: '2030-01-01' }), null), '未来生日', '无年龄时不加括号');
 
-// 17. 年龄不落库：名称存的是纯文本，年龄只在渲染时拼接
-console.log('[7.1] 年龄不写入数据');
-eq(Core.cleanTitle('birthday', '我妈生日（55岁）'), '我妈生日', '去掉全角括号年龄');
-eq(Core.cleanTitle('birthday', '我妈生日(55岁)'), '我妈生日', '去掉半角括号年龄');
-eq(Core.cleanTitle('birthday', '我妈生日'), '我妈生日', '纯名称原样保留');
+// 17. 年龄与「生日」都不落库：名称里只留人，两者只在渲染时拼
+console.log('[7.1] 名称只留人');
+eq(Core.cleanTitle('birthday', '我妈生日（55岁）'), '我妈', '年龄与「生日」一起摘');
+eq(Core.cleanTitle('birthday', '我妈生日(55岁)'), '我妈', '半角括号同样处理');
+eq(Core.cleanTitle('birthday', '我妈生日'), '我妈', '只写生日也摘掉');
+eq(Core.cleanTitle('birthday', '我妈的生日'), '我妈', '「的生日」一起摘');
+eq(Core.cleanTitle('birthday', '我妈 生日'), '我妈', '带空格也摘');
+eq(Core.cleanTitle('birthday', '生日'), '', '只剩「生日」时为空');
+eq(Core.cleanTitle('birthday', "Mom's birthday"), 'Mom', '英文所有格');
+eq(Core.cleanTitle('birthday', 'Mom birthday'), 'Mom', '英文裸 birthday');
 eq(Core.cleanTitle('anniversary', '结婚纪念日（8岁）'), '结婚纪念日（8岁）', '非生日不剥离');
 eq(Core.cleanTitle('birthday', '小（55岁）朋友'), '小（55岁）朋友', '只剥离结尾的年龄后缀');
+
+console.log('[7.2] 拼接顺序：名字生日（几岁）');
+eq(Core.titleOf(mk({ title: '妈妈', date: '1971-05-14' }), 55), '妈妈生日（55岁）', '「生日」在前、年龄收尾');
+eq(Core.titleOf(mk({ title: '生日', date: '1971-05-14' }), 55), '生日（55岁）', '名字只剩生日时不重复拼接');
+eq(Core.titleOf(mk({ title: '', kind: 'birthday', date: '1971-05-14' }), null), '生日', '没名字没年龄就只说生日');
+eq(Core.titleOf(mk({ title: '妈妈生日', kind: 'countdown', date: '1971-05-14' }), 55), '妈妈生日', '非生日不补也不摘');
+// 老数据（名称里带「生日」）在入库时就被洗干净，渲染层不再做兼容
+eq(Core.titleOf(Core.normalize({ events: [{ id: 'o', title: '妈妈生日', kind: 'birthday', date: '1971-05-14' }] }).events[0], 55),
+  '妈妈生日（55岁）', '带「生日」的旧数据入库即洗成纯名称');
+
+// 17.0.1 生日进度条要用「还剩多少」，所以周期信息要给 left
+console.log('[7.3] 周期进度含剩余量');
+const bOcc = Core.nextOccurrence(mk({ date: '1971-05-14' }), TODAY);
+const info = Core.cycleInfo(mk({ date: '1971-05-14' }), bOcc, TODAY);
+ok(!!info, '每年重复有周期信息');
+eq(info.total, 365, '周期 365 天');
+eq(info.left, bOcc.days, '剩余天数 = 离下次发生还有几天');
+eq(info.total, info.done + info.left, '已过 + 剩余 = 周期长度');
+ok(Math.abs(info.ratio - info.done / info.total) < 1e-9, 'ratio 是已过占比');
+eq(Core.cycleInfo(mk({ date: '1971-05-14', repeat: false }), bOcc, TODAY), null, '不重复没有周期');
 
 const dirty = Core.normalize({ events: [
   { id: 'd1', title: '我妈生日（55岁）', kind: 'birthday', date: '1971-05-14' },
   { id: 'd2', title: '我妈生日', kind: 'birthday', date: '1971-05-14' }
 ] });
-eq(dirty.events[0].title, '我妈生日', '导入时清掉年龄后缀');
+eq(dirty.events[0].title, '我妈', '导入时清掉年龄与「生日」');
 eq(Core.titleOf(dirty.events[0], 55), '我妈生日（55岁）', '渲染时重新拼接，不重复');
-eq(dirty.events[1].title, '我妈生日', '数据里始终是纯名称');
+eq(dirty.events[1].title, '我妈', '数据里始终是纯名称');
 
 // 17. 提醒渠道（每个日子独立）
 console.log('[8] 自定义提醒渠道');

@@ -53,6 +53,10 @@
     filter: 'all',
     editingId: null,
     draft: null,
+    // 详情页正在展示的那条记录（null = 详情页关着）
+    detailId: null,
+    // 打开详情前焦点所在的元素，关闭后还给它
+    detailFocus: null,
     lastWritten: '',
     // 清除数据后的一小段时间内忽略同步回写，避免刚清空的数据被旧值拉回来
     clearAt: 0
@@ -230,6 +234,9 @@
       refreshSaveLabel();
       refreshRemindHint();
     }
+
+    // 详情页的信息行都是按语言拼的（类型、历法、提醒、状态），切语言后要整段重排
+    refreshDetail();
   }
 
   /** 用户切换语言：写进同步数据，让任务投影用同一种语言 */
@@ -372,6 +379,7 @@
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
     if (sheetTimer) { clearTimeout(sheetTimer); sheetTimer = null; }
+    if (detailTimer) { clearTimeout(detailTimer); detailTimer = null; }
     if (setTimer) { clearTimeout(setTimer); setTimer = null; }
     if (themeObserver) { themeObserver.disconnect(); themeObserver = null; }
     document.removeEventListener('visibilitychange', onVisibility);
@@ -397,6 +405,30 @@
     }
     if (occ.isPast) return { mode: 'elapsed', days: -occ.days, date: occ.date };
     return { mode: 'remaining', days: occ.days, date: occ.date };
+  }
+
+  /**
+   * 进度条
+   *   · 生日  → 画「还剩多少」：越接近生日，条越短（用户要的相反方向），
+   *             文案带上此刻的年龄（「55岁还有 55%」），比标题里「这次生日几岁」少一岁
+   *   · 其余  → 画「本年度已过多少」：随时间变长
+   */
+  function barOf(ev, occ, today) {
+    var info = Core.cycleInfo(ev, occ, today);
+    if (!info) return '';
+    var bday = ev.kind === 'birthday';
+    var pct = Math.round((bday ? info.left / info.total : info.ratio) * 100);
+    var txt;
+    if (bday) {
+      var age = Core.ageOn(ev, today || new Date());
+      txt = age == null
+        ? t('hero.barLeft', { p: pct })
+        : t('hero.barLeftAge', { n: age, p: pct });
+    } else {
+      txt = t('hero.barDone', { p: pct });
+    }
+    return '<div class="ml-bar' + (bday ? ' ml-bar--left' : '') + '"><i style="width:' + pct + '%"></i></div>' +
+      '<div class="ml-bar-text"><span>' + esc(txt) + '</span><span>' + esc(t('hero.barTotal')) + '</span></div>';
   }
 
   /**
@@ -474,12 +506,6 @@
     el.textContent = txt;
   }
 
-  /** 归档筛选胶囊上的计数 */
-  function renderArchiveEntry(count) {
-    var chip = document.querySelector('.ml-chip[data-f="archive"]');
-    if (chip) chip.textContent = count ? t('chip.archiveN', { n: count }) : t('chip.archive');
-  }
-
   /** 分区为空时的等高占位，避免切换分类时卡片突然消失、页面跳动 */
   function heroPlaceholderHtml(title, hint) {
     return '<div class="ml-hero ml-hero--empty">' +
@@ -499,6 +525,53 @@
   // 上一次渲染出的卡片内容：一致就不碰 DOM（省一次重排，也不会重播入场动画）
   var heroKey = '';
 
+  /**
+   * 大卡片主体：标签句 + 天数 + 日期行 + 进度条
+   * 置顶卡与详情页共用这一份，两处样式与文案才不会各走一路
+   */
+  function cardBodyHtml(row, today) {
+    var ev = row.ev;
+    var occ = row.occ;
+    var m = row.metric;
+
+    if (m.mode === 'none') {
+      return '<div class="ml-hero-label">' + esc(row.name) + '</div>' +
+        '<div class="ml-hero-num ml-hero-num--empty">—<span>' + esc(t('unit.overflow')) + '</span></div>' +
+        '<div class="ml-hero-meta">' + esc(Core.dateLabel(ev, occ)) + '</div>';
+    }
+
+    var remain = m.mode === 'remaining';
+    // 三天内改说「就在 今天 / 明天 / 后天」，标签随之从「距离…还有」换成「…就在」
+    var disp = remain ? remainDisplay(m.days) : null;
+
+    var label;
+    if (!remain) label = I.html('hero.elapsedLabel', { name: esc(row.name) });
+    else if (disp.word) {
+      label = I.html(m.days === 0 ? 'hero.todayLabel' : 'hero.soonLabel', { name: esc(row.name) });
+    } else label = I.html('hero.remainLabel', { name: esc(row.name) });
+
+    var numCls = remain
+      ? 'ml-hero-num ml-hero-num--remain' + (disp.word ? ' ml-hero-num--word' : '')
+      : 'ml-hero-num ml-hero-num--elapsed';
+    // 文字状态（今天/明天/后天）已经把话说完了，不再挂单位
+    var unit = disp && disp.word ? '' : '<span>' + esc(t(remain ? 'hero.unitRemain' : 'hero.unitElapsed')) + '</span>';
+    var num = '<div class="' + numCls + '">' + esc(disp ? disp.text : String(m.days)) + unit + '</div>';
+
+    var lf = L.solarToLunar(occ.date);
+    // 超出农历查表年限时不再显示换算结果，避免出现「腊月三十日第 500 天」这类脏值
+    var lunarMeta = lf.outOfRange ? esc(t('unit.overflow')) : L.lunarText(lf.month, lf.day, lf.isLeap);
+    var meta = [
+      Core.cnDate(occ.date),
+      lunarMeta,
+      ageText(row)
+    ].filter(Boolean).join('<i class="sep">·</i>');
+
+    return '<div class="ml-hero-label">' + label + '</div>' +
+      num +
+      '<div class="ml-hero-meta">' + meta + '</div>' +
+      barOf(ev, occ, today);
+  }
+
   function renderHero(row, today) {
     var el = $('#mlHero');
     var rc;
@@ -509,53 +582,8 @@
       rc = '128, 138, 155';
       html = heroPlaceholderHtml(empty[0], empty[1]);
     } else {
-      var ev = row.ev;
-      var occ = row.occ;
-      var m = row.metric;
-      var remain = m.mode === 'remaining';
-      // 三天内改说「就在 今天 / 明天 / 后天」，标签随之从「距离…还有」换成「…就在」
-      var disp = remain ? remainDisplay(m.days) : null;
-      rc = hexToRgb(ev.color).join(',');
-
-      var label;
-      if (!remain) label = I.html('hero.elapsedLabel', { name: esc(row.name) });
-      else if (disp.word) {
-        label = I.html(m.days === 0 ? 'hero.todayLabel' : 'hero.soonLabel', { name: esc(row.name) });
-      } else label = I.html('hero.remainLabel', { name: esc(row.name) });
-
-      var heroCls = remain
-        ? 'ml-hero-num ml-hero-num--remain' + (disp.word ? ' ml-hero-num--word' : '')
-        : 'ml-hero-num ml-hero-num--elapsed';
-      // 文字状态不再需要「剩余天数」单位，数字状态保持原样
-      var unit = disp && disp.word ? '' : '<span>' + esc(t(remain ? 'hero.unitRemain' : 'hero.unitElapsed')) + '</span>';
-      var num = '<div class="' + heroCls + '">' + esc(disp ? disp.text : String(m.days)) + unit + '</div>';
-
-      var lf = L.solarToLunar(occ.date);
-      // 超出农历查表年限时不再显示换算结果，避免出现「腊月三十日第 500 天」这类脏值
-      var lunarMeta = lf.outOfRange ? esc(t('unit.overflow')) : L.lunarText(lf.month, lf.day, lf.isLeap);
-      var meta = [
-        Core.cnDate(occ.date),
-        lunarMeta,
-        ageText(row)
-      ].filter(Boolean).join('<i class="sep">·</i>');
-
-      var bar = '';
-      var p = Core.cycleProgress(ev, occ, today);
-      if (p !== null) {
-        var pct = Math.round(p * 100);
-        bar =
-          '<div class="ml-bar"><i style="width:' + pct + '%"></i></div>' +
-          '<div class="ml-bar-text"><span>' + esc(t('hero.barDone', { p: pct })) + '</span><span>' +
-            esc(t('hero.barTotal')) + '</span></div>';
-      }
-
-      html =
-        '<div class="ml-hero" data-id="' + esc(ev.id) + '">' +
-          '<div class="ml-hero-label">' + label + '</div>' +
-          num +
-          '<div class="ml-hero-meta">' + meta + '</div>' +
-          bar +
-        '</div>';
+      rc = hexToRgb(row.ev.color).join(',');
+      html = '<div class="ml-hero" data-id="' + esc(row.ev.id) + '">' + cardBodyHtml(row, today) + '</div>';
     }
 
     var key = rc + '|' + html;
@@ -719,11 +747,239 @@
 
     renderList(rows);
     renderSub(rows, archivedCount);
-    renderArchiveEntry(archivedCount);
+    // 归档胶囊不挂数量：数字由副标题「· 归档 N 个」承担，胶囊只做个入口
 
     Array.prototype.forEach.call(document.querySelectorAll('.ml-chip'), function (b) {
       b.setAttribute('aria-pressed', String(b.dataset.f === state.filter));
     });
+
+    // 详情页开着时内容也要跟着数据走（保存、归档、同步都可能改到同一条）
+    refreshDetail();
+  }
+
+  /* ================= 详情页 =================
+   * 点条目先看详情（只读），右上角「编辑」才进表单。
+   * 详情是覆盖层而不是弹层：列表 DOM 不重建，返回后滚动位置与筛选状态都还在。
+   */
+
+  var detailTimer = null;
+
+  /** 详情页是否开着 */
+  function detailOpen() {
+    return !!state.detailId;
+  }
+
+  /** 详情页当前对应的记录（可能已被删除，或被别的设备同步掉） */
+  function detailEvent() {
+    return findEventById(state.detailId);
+  }
+
+  /** 「2026-05-12 · 周六」 */
+  function dateWithWeek(d) {
+    return d ? Core.ymd(d) + ' · ' + Core.WEEK[d.getDay()] : '';
+  }
+
+  /**
+   * 记录的农历说明：农历记录用存下来的月日（那才是用户填的），
+   * 公历记录按公历日期换算。干支生肖只对农历记录有意义，公历记录不显示，
+   * 否则换算出来的年份容易被当成用户填的年份。
+   */
+  function lunarLine(ev, base) {
+    var lf = null;
+    var y = 0;
+    if (ev.calendar === 'lunar' && ev.lunar) {
+      lf = { month: ev.lunar.month, day: ev.lunar.day, isLeap: !!ev.lunar.isLeap };
+      y = ev.lunar.year;
+    } else if (base) {
+      var s = L.solarToLunar(base);
+      if (!s.outOfRange) { lf = s; y = s.year; }
+    }
+    if (!lf) return '';
+    var txt = L.lunarText(lf.month, lf.day, lf.isLeap);
+    if (ev.calendar === 'lunar' && y) {
+      txt += ' · ' + t('zodiac.label', { gz: L.ganzhiOf(y), z: L.zodiacOf(y) });
+    }
+    return txt;
+  }
+
+  /** 提醒渠道与档位的人话描述，如「提前 1 天、当天 · 加入任务列表」 */
+  function remindLine(ev) {
+    if (!Core.hasReminder(ev)) {
+      return t(ev.archived ? 'detail.remindArchived' : 'detail.remindOff');
+    }
+    var rm = Core.normalizeRemind(ev.remind);
+    var chans = [];
+    if (rm.task) chans.push(t('detail.remindTask'));
+    if (rm.snack) chans.push(t('detail.remindSnack'));
+    var days = rm.offsets.map(function (d) { return t('offset.' + d); });
+    return t('detail.remindLine', {
+      ch: chans.join(langListSep()),
+      days: days.join(langListSep())
+    });
+  }
+
+  /** 剩余 / 已过天数说成人话（三天内用「今天 / 明天 / 后天」） */
+  function metricLine(m, remain, disp) {
+    if (m.mode === 'none') return '';
+    if (remain && m.days === 0) return t('detail.todayLeft');
+    if (!remain && m.days === 0) return t('detail.todayPast');
+    return t(remain ? 'detail.daysLeft' : 'detail.daysPast', { n: m.days });
+  }
+
+  function detailHtml(ev, occ, m, span, name, today) {
+    var rgb = hexToRgb(ev.color).join(',');
+    var remain = m.mode === 'remaining';
+    var disp = remain ? remainDisplay(m.days) : null;
+
+    var tags = '<span class="ml-tag">' + esc(Core.KINDS[ev.kind]) + '</span>';
+    if (ev.archived) {
+      tags += '<span class="ml-tag ml-tag--muted">' + esc(t('detail.statusArchived')) + '</span>';
+    } else if (isExpiredCountdown(ev, m)) {
+      tags += '<span class="ml-tag ml-tag--expired">' + esc(t('detail.statusExpired')) + '</span>';
+    }
+
+    // 信息行：一律纯文本，拼接时统一 esc
+    // 类型交给卡片顶部的标签、历法由「日期 / 农历」两行自明，不再各占一行
+    var base = Core.parseYMD(ev.date);
+    var rows = [];
+    if (base) {
+      var dateTxt = dateWithWeek(base);
+      if (ev.term && Core.TERMS[ev.term]) dateTxt += ' · ' + Core.TERMS[ev.term].name;
+      rows.push([t('detail.date'), dateTxt]);
+    }
+    var lunarTxt = lunarLine(ev, base);
+    if (lunarTxt) rows.push([t('detail.lunar'), lunarTxt]);
+    // 纪念日与已过期的倒数日，「上次」要指向起算那天（metric.date），而不是下一次发生日：
+    // 否则会出现「2027-06-16 · 已过 3057 天」这种未来日期配过去天数
+    var whenDate = m.date || (occ && occ.date);
+    if (whenDate) {
+      var nextTxt = dateWithWeek(whenDate);
+      var mline = metricLine(m, remain, disp);
+      if (mline) nextTxt += ' · ' + mline;
+      rows.push([t(remain ? 'detail.next' : 'detail.last'), nextTxt]);
+    }
+    if (ev.kind === 'anniversary' && span) {
+      rows.push([t('detail.span'), span.days > 0
+        ? t('years.nDays', { n: span.years, d: span.days })
+        : t('years.n', { n: span.years })]);
+    }
+    // 倒数日的「过期后重新开始倒数」原本挂在状态行上，状态行去掉后单独成行，信息不能丢
+    if (ev.kind === 'countdown') {
+      rows.push([t('detail.repeat'), ev.repeat ? t('repeat.on') : t('repeat.off')]);
+    }
+    rows.push([t('detail.remind'), remindLine(ev)]);
+
+    // 状态只在归档时说一句：正常是默认值，写出来等于没信息（归档 / 过期另有标签兜底）
+    if (ev.archived) rows.push([t('detail.status'), t('detail.statusArchived')]);
+
+    // 备注单独成块：它是用户自己写的正文，混在「类型/日期」这类键值行里会被当成一行小字忽略掉；
+    // 换行也原样保留，列表里挤成一行看不出层次
+    var noteHtml = ev.note
+      ? '<div class="ml-detail-note">' +
+          '<div class="ml-detail-note-k">' + esc(t('detail.note')) + '</div>' +
+          '<p class="ml-detail-note-v">' + esc(ev.note) + '</p>' +
+        '</div>'
+      : '';
+
+    var rowsHtml = rows.map(function (r) {
+      return '<div class="ml-detail-row"><span class="ml-detail-k">' + esc(r[0]) +
+        '</span><span class="ml-detail-v">' + esc(r[1]) + '</span></div>';
+    }).join('');
+
+    // 头部大卡片与列表置顶卡同一份结构（cardBodyHtml）：标签句 + 天数 + 日期 + 进度条
+    var row = { ev: ev, occ: occ, metric: m, span: span, name: name };
+
+    return '<div class="ml-detail-inner" style="--ml-rc:' + rgb + '">' +
+        '<section class="ml-hero ml-hero--detail">' +
+          '<div class="ml-detail-tags">' + tags + '</div>' +
+          cardBodyHtml(row, today) +
+        '</section>' +
+        '<div class="ml-detail-rows">' + rowsHtml + '</div>' +
+        noteHtml +
+      '</div>';
+  }
+
+  function renderDetail() {
+    if (!state.detailId) return;
+    var ev = detailEvent();
+    if (!ev) { closeDetail(); return; }
+    var today = new Date();
+    var occ = Core.nextOccurrence(ev, today);
+    var m = metricOf(ev, occ, today);
+    var span = ev.kind === 'anniversary' ? Core.anniversarySpan(ev, today) : null;
+    var name = Core.titleOf(ev, Core.ageAt(ev, occ, today));
+    $('#mlDetailBody').innerHTML = detailHtml(ev, occ, m, span, name, today);
+  }
+
+  /**
+   * 数据变动后刷新详情（保存、同步、切语言都会走到）。
+   * 条目已经被删掉时直接退回列表，别让用户对着一条不存在的记录继续点「编辑」。
+   */
+  function refreshDetail() {
+    if (!state.detailId) return;
+    if (!detailEvent()) { closeDetail(); return; }
+    renderDetail();
+  }
+
+  /**
+   * 打开详情
+   * @param {string} id 记录 id
+   * @param {boolean} [focusIn] 是否把焦点移进详情（只有键盘操作才需要，鼠标/触摸打开
+   *        时自动聚焦会让「返回」一直挂着一圈焦点环）
+   */
+  function openDetail(id, focusIn) {
+    var ev = findEventById(id);
+    if (!ev) return;
+    state.detailId = ev.id;
+    // 记住从哪一条点进来的：关闭后把焦点还回去，键盘用户不会掉回页面顶部
+    state.detailFocus = document.activeElement;
+    renderDetail();
+
+    var layer = $('#mlDetailLayer');
+    clearTimeout(detailTimer);
+    detailTimer = null;
+    layer.hidden = false;
+    // 详情盖住了列表：让背后的列表不可聚焦，Tab 不会跳进看不见的条目里
+    setAppInert(true);
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { document.body.classList.add('ml-detail-open'); });
+    });
+    if (focusIn) {
+      try { $('#mlDetailBack').focus(); } catch (e) { /* 聚焦失败不影响展示 */ }
+    }
+  }
+
+  /** 详情打开时把主列表从 Tab 序列里摘出去（不支持 inert 的旧 WebView 上是个无害的属性） */
+  function setAppInert(on) {
+    var app = document.querySelector('.ml-app');
+    if (!app) return;
+    if (on) app.setAttribute('inert', '');
+    else app.removeAttribute('inert');
+  }
+
+  function closeDetail() {
+    if (!state.detailId) return;
+    state.detailId = null;
+    document.body.classList.remove('ml-detail-open');
+    // 先解除 inert 再还焦点，否则 focus() 在 inert 子树里不生效
+    setAppInert(false);
+    clearTimeout(detailTimer);
+    detailTimer = setTimeout(function () {
+      $('#mlDetailLayer').hidden = true;
+      detailTimer = null;
+    }, 320);
+
+    var back = state.detailFocus;
+    state.detailFocus = null;
+    if (back && typeof back.focus === 'function') {
+      try { back.focus(); } catch (e) { /* 原来那条已经被删掉了 */ }
+    }
+  }
+
+  /** 详情里的「编辑」：把表单叠在详情之上，关掉表单后仍回到详情 */
+  function editFromDetail() {
+    if (!state.detailId) return;
+    openSheet(state.detailId);
   }
 
   /* ================= 表单 ================= */
@@ -1295,8 +1551,9 @@
   function collect() {
     var d = state.draft;
     d.kind = segValue('#fKind') || 'countdown';
-    // 名称只存纯文本，年龄不写入数据（仅在渲染时拼接），这里顺手清掉手动输入的年龄后缀
-    d.title = Core.cleanTitle(d.kind, $('#fTitle').value.trim().slice(0, 40));
+    // 名称只存人：年龄与「生日」二字都由界面拼，这里顺手把手动输入的那部分清掉
+    var raw = $('#fTitle').value.trim().slice(0, 40);
+    d.title = Core.cleanTitle(d.kind, raw) || raw;
     d.calendar = segValue('#fCalendar') || 'solar';
     d.note = $('#fNote').value.trim().slice(0, 200);
     d.repeat = d.kind !== 'countdown' ? true : $('#fRepeat').checked;
@@ -1576,19 +1833,22 @@
     $('#mlList').addEventListener('click', function (e) {
       if (e.target.closest('[data-add]')) { openSheet(null); return; }
       var item = e.target.closest('.ml-item');
-      if (item) openSheet(item.dataset.id);
+      if (item) openDetail(item.dataset.id);
     });
 
     $('#mlList').addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       var item = e.target.closest('.ml-item');
-      if (item) { e.preventDefault(); openSheet(item.dataset.id); }
+      if (item) { e.preventDefault(); openDetail(item.dataset.id, true); }
     });
 
     $('#mlHero').addEventListener('click', function (e) {
       var h = e.target.closest('.ml-hero');
-      if (h) openSheet(h.dataset.id);
+      if (h) openDetail(h.dataset.id);
     });
+
+    $('#mlDetailBack').addEventListener('click', closeDetail);
+    $('#mlDetailEdit').addEventListener('click', editFromDetail);
 
     $('#fKind').addEventListener('click', function (e) {
       var b = e.target.closest('button');
@@ -1685,8 +1945,10 @@
 
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
+      // 编辑弹层叠在详情之上，Esc 先收最上面那层
       if (!$('#mlLayer').hidden) closeSheet();
       else if (!$('#mlSetLayer').hidden) closeSettings();
+      else if (detailOpen()) closeDetail();
     });
   }
 

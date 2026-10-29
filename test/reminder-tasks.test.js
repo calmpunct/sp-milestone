@@ -89,10 +89,10 @@ let existing = [
 p = RT.plan({ events: [mom], existing: existing, today: TODAY });
 eq(p.add.length + p.update.length + p.remove.length, 0, '完全一致时零操作');
 
-const renamed = mk({ id: 'e1', title: '妈妈生日（农历）' });
+const renamed = mk({ id: 'e1', title: '妈妈（农历）' });
 p = RT.plan({ events: [renamed], existing: existing, today: TODAY });
 eq(p.update.length, 1, '改名触发更新');
-eq(p.update[0].patch.title, '🎂 妈妈生日（农历）（56岁）'.replace('（农历）', '（农历）'), '标题同步');
+eq(p.update[0].patch.title, '🎂 妈妈（农历）生日（56岁）', '标题同步');
 
 const moved = mk({ id: 'e1', title: '妈妈生日', date: '1971-05-20' });
 p = RT.plan({ events: [moved], existing: existing, today: TODAY });

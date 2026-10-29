@@ -48,6 +48,25 @@
   <main class="ml-list" id="mlList"></main>
 </div>
 
+<!-- 详情页：点列表条目先进这里，右上角「编辑」才进下面的编辑弹层。
+     做成整页覆盖层而不是弹层，是因为详情要能放下一屏信息，返回后列表的滚动位置也还在 -->
+<div id="mlDetailLayer" hidden>
+  <div class="ml-detail" role="dialog" aria-modal="true" aria-labelledby="mlDetailTitle">
+    <header class="ml-detail-head">
+      <button type="button" class="ml-detail-back" id="mlDetailBack" data-i18n-aria="back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 5l-7 7 7 7"/>
+        </svg>
+        <span data-i18n="back"></span>
+      </button>
+      <h2 id="mlDetailTitle" data-i18n="detail.title"></h2>
+      <button type="button" class="ml-strong" id="mlDetailEdit" data-i18n="edit"></button>
+    </header>
+    <div class="ml-detail-body" id="mlDetailBody"></div>
+  </div>
+</div>
+
 <div id="mlLayer" hidden>
   <div class="ml-mask" id="mlMask"></div>
   <div class="ml-sheet" id="mlSheet" role="dialog" aria-modal="true" aria-labelledby="mlSheetTitle">
