@@ -3,6 +3,7 @@
 **中文** · [English](#milestones)
 
 Super Productivity 插件。管理倒数日、纪念日、生日和节日，数据随应用同步在设备间流转；界面支持中文、英语。历法默认公历，可以开启农历支持。
+
 | <img width="450" alt="image" src="https://github.com/user-attachments/assets/848ce5f5-92b4-4c3f-a410-d0ed295da6d4" /> | <img width="450" alt="image" src="https://github.com/user-attachments/assets/0dd613f1-51e1-45b7-82e5-deda3efaa776" /> |
 | --- | --- |
 
@@ -22,16 +23,18 @@ Super Productivity 插件。管理倒数日、纪念日、生日和节日，数�
 | 归档        | 每个事项可归档：不在「全部」里显示，也不再提醒；筛选条最右边的「归档」就是归档视图的入口                              |
 | 备注        | 每个事项可写 200 字备注；详情页下方单独成块显示，手动换行原样保留                                       |
 | 跨设备同步     | 依赖应用自身的同步通道，桌面 / 移动端 / 网页数据一致                                             |
+| 语言锁定      | **首次打开选一次**中文或英文，之后固定（设置里只读）。两台设备用同一种语言，任务文案不会互相覆盖；要换语言需清除数据后重选 |
+| 导出备份      | 设置 → 数据 → 导出为 TXT：按生日 / 纪念日 / 倒数日 / 节日分组导出全部事项（含农历日期）；点「复制」后自行粘贴保存（应用内不允许下载） |
 
 ## 安装
 
-**要求**：Super Productivity **19.3.1** 更高版本（用到该版本才有的插件 API：`getCurrentLanguage` / `onReady` / `onUnload`）。低版本会在安装时被拒绝（报index.html大于100kb）。
+**要求**：Super Productivity **19.3.1** 更高版本（用到该版本才有的插件 API：`getArchivedTasks` / `onReady` / `onUnload`）。低版本会在安装时被拒绝（报index.html大于100kb）。
 
 **方式一：手动安装（推荐，各平台通用）**
 
 1. 打开 Super Productivity → `设置` → `插件`
 2. 点击 `Choose Plugin File`（选择插件文件）
-3. 选中 `releases/sp-milestone-v1.3.0.zip`
+3. 选中 `releases/sp-milestone-v1.4.0.zip`
 4. 安装后，需要**开启插件**，左侧导航出现 `Milestone` 入口
 
 > 不需要解压 ZIP。网页版因浏览器跨域限制无法自动下载，请手动下载 ZIP 后用同样方式安装。
@@ -152,7 +155,7 @@ A Super Productivity plugin. Manages countdowns, anniversaries, birthdays and fe
 
 1. Open Super Productivity → `Settings` → `Plugins`
 2. Click `Choose Plugin File`
-3. Select `releases/sp-milestone-v1.3.0.zip`
+3. Select `releases/sp-milestone-v1.4.0.zip`
 4. After installing, **enable the plugin** — a "Milestone" entry appears in the left navigation
 
 > No need to unzip. The web version cannot download automatically because of browser CORS rules — download the ZIP manually and install it the same way.

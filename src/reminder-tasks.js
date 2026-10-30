@@ -25,6 +25,8 @@
 
   // 备注里的机器标记，用于跨设备识别「这条任务是谁生成的」
   // 形如：ml:ev=e1;cy=2026-05-14   （cy = 本轮事件发生的公历日期）
+  // 语言是同步数据里的固定值（首次打开时选一次），两台设备渲染出的文案必然相同，
+  // 所以对账时直接比文本就够了。
   var MARK_RE = /ml:ev=([A-Za-z0-9_\-:]+);cy=(\d{4}-\d{2}-\d{2})/;
 
   var ICONS = { birthday: '🎂', anniversary: '🎉', countdown: '⏳', festival: '🎊' };
@@ -201,6 +203,9 @@
       if (task.isDone && mark.cycle === d.cycle) return;
 
       var patch = {};
+      // 标题与备注始终一起比、一起写：只要有一条不一致就补上，不会出现
+      // 「标题换了、备注还是旧的」这种半更新状态。
+      // 语言已经是同步数据里的固定值，两台设备算出的文案一致，不会互相覆盖。
       if (task.title !== d.title) patch.title = d.title;
       if ((task.dueDay || '') !== d.dueDay) patch.dueDay = d.dueDay;
       if ((task.notes || '') !== d.notes) patch.notes = d.notes;
@@ -223,10 +228,54 @@
     return { add: add, update: update, remove: remove, wanted: desired.length };
   }
 
+  /**
+   * 归档任务 → 「已处理」集合（`eventId@周期`）。
+   *
+   * 用途：本机的 ml-handled-v1 只记本机勾选的动作（宿主不为同步来的操作触发
+   * taskComplete 钩子）。同一账号的另一台设备勾完并归档后，本机既看不到那条
+   * 任务、也没有 handled 记录，下一轮对账就会把提醒重新建出来 —— 这就是
+   * 「跨设备已完成又复活」。归档是同步的，所以读一次归档就能判出来。
+   *
+   * 归档列表的形态各家宿主实现不一，统一归一化：数组 / {id: task} 映射，
+   * 元素可能是任务本身，也可能是 {task: ...} 包装。
+   * @returns {Object<string, boolean>} `eventId@周期` → true
+   */
+  function handledFromArchived(list) {
+    var out = Object.create(null);
+
+    /** 归档列表的包装层数不定（数组 / 映射 / {task} / 再套一层），递归剥到任务为止 */
+    function walk(node, depth) {
+      if (!node || depth > 3) return;
+      if (Array.isArray(node)) {
+        for (var i = 0; i < node.length; i++) walk(node[i], depth + 1);
+        return;
+      }
+      if (typeof node !== 'object') return;
+      if (node.task && typeof node.task === 'object') { walk(node.task, depth + 1); return; }
+      if (typeof node.notes !== 'string') {
+        // 映射：{ id: task, ... }
+        for (var k in node) {
+          if (Object.prototype.hasOwnProperty.call(node, k)) walk(node[k], depth + 1);
+        }
+        return;
+      }
+      // 到这里才是任务本体
+      // 归档里不该有未完成的任务；真遇到了不能当完成处理（否则提醒会被静音掉）
+      if (node.isDone === false) return;
+      var mk = parseMark(node.notes);
+      if (!mk) return;
+      out[mk.eventId + '@' + mk.cycle] = true;
+    }
+
+    walk(list, 0);
+    return out;
+  }
+
   return {
     offsetText: offsetText,
     markLine: markLine,
     parseMark: parseMark,
+    handledFromArchived: handledFromArchived,
     iconOf: iconOf,
     nextSlot: nextSlot,
     desiredTask: desiredTask,

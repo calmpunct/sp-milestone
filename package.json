@@ -1,11 +1,11 @@
 {
   "name": "sp-milestone",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Super Productivity plugins。Milestone — countdowns, anniversaries, birthdays and festivals, with lunar calendar conversion, festival presets and cross-device sync. / 里程碑：倒数日、纪念日、生日与节日管理，支持农历换算与预设节日、跨设备同步。",
   "scripts": {
     "build": "node build.js",
-    "test": "node test/lunar.test.js && node test/core.test.js && node test/i18n.test.js && node build.js && node test/dom.test.js && node test/dom-tick.test.js && node test/reminder-tasks.test.js && node test/reminder.test.js && node test/static.test.js",
+    "test": "node test/lunar.test.js && node test/core.test.js && node test/i18n.test.js && node build.js && node test/dom.test.js && node test/dom-tick.test.js && node test/reminder-tasks.test.js && node test/reminder.test.js && node test/export-txt.test.js && node test/static.test.js",
     "test:unit": "node test/lunar.test.js && node test/core.test.js",
     "test:dom": "node build.js && node test/dom.test.js && node test/dom-tick.test.js",
     "test:i18n": "node test/i18n.test.js"

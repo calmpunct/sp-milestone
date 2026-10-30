@@ -232,8 +232,10 @@
       taskTag: TAG_DEFAULT,
       // 顶部是否放大显示当前分区的第一条
       hero: true,
-      // 语言偏好：auto 跟随系统，或强制 zh / en
-      lang: 'auto',
+      // 语言：空串 = 还没选（首次打开时让用户选一次，选完就固定）
+      // 不再有「跟随系统」：两台设备语言不同时会互相把任务文案写回去，
+      // 而语言存在同步数据里，两端拿到的就是同一种，问题从根上没有了
+      lang: '',
       // 是否显示农历（默认关：不用农历的界面里一个农历元素都不出现）
       lunar: false,
       // 大卡片是否显示秒级的倒计时/正计时（默认关：不打开就一个定时器都不起）
@@ -252,14 +254,14 @@
 
     if (raw.settings && typeof raw.settings === 'object') {
       var s = raw.settings;
-      // 标签名（老数据里的 taskProject 不再读取：项目 → 收件箱 + 标签）
+      // 标签名：任务一律落收件箱，靠这个标签归类
       if (typeof s.taskTag === 'string' && s.taskTag.trim()) {
         data.settings.taskTag = s.taskTag.trim().slice(0, 40);
       }
       data.settings.hero = s.hero !== false;
-      // 语言：只认 auto / zh / en，其余一律回到 auto（跟随系统）
-      data.settings.lang = s.lang === 'en' || s.lang === 'zh' ? s.lang : 'auto';
-      // 农历显示：只有明确的 true 才算开（缺省、旧数据、坏值都是关）
+      // 语言：只认 zh / en；其余一律当成「还没选」，首次打开时弹出选择框
+      data.settings.lang = s.lang === 'en' || s.lang === 'zh' ? s.lang : '';
+      // 农历显示：只有明确的 true 才算开（缺省、坏值都按关）
       data.settings.lunar = s.lunar === true;
       // 秒级计时：同上，缺省与坏值都按关处理（关着不建定时器）
       data.settings.tick = s.tick === true;
@@ -305,7 +307,7 @@
       if (!date) return null;
 
       var id = typeof e.id === 'string' && e.id ? e.id : 'e' + i + Date.now().toString(36);
-      // 历史数据里可能有重复 id：重复的重新发一个，否则编辑/删除会张冠李戴
+      // 同步来的数据可能有重复 id：重复的重新发一个，否则编辑/删除会张冠李戴
       if (usedIds[id]) id = uid();
       usedIds[id] = true;
 

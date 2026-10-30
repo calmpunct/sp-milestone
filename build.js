@@ -178,7 +178,7 @@ function buildIndexHtml() {
   const ver = manifest.version;
   const tpl = read('index.tpl.html');
   const css = cssBundle('styles.css');
-  const js = localeScript() + jsBundle(['i18n.js', 'lunar.js', 'event-core.js', 'app.js']);
+  const js = localeScript() + jsBundle(['i18n.js', 'lunar.js', 'event-core.js', 'export-txt.js', 'app.js']);
   assertParses(js, 'index.html 内联脚本');
   assertNoNodeApis(js, 'index.html 内联脚本');
 

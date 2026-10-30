@@ -1094,3 +1094,175 @@ html[data-ml-theme='dark'] .ml-days button[aria-pressed='true'] { color: #101318
 }
 
 .ml-toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* ============ 语言选择（首次打开 / 清空数据后） ============
+ * 此刻还没有语言可用，所以卡片里的文案是中英双语写死的；
+ * 层级压在所有弹层之上，且没有关闭按钮 —— 必须选一次才继续。 */
+.ml-lang-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 18, 22, 0.55);
+}
+
+.ml-lang-card {
+  position: fixed;
+  z-index: 81;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 40px);
+  max-width: 420px;
+  padding: 22px 20px 20px;
+  border-radius: var(--ml-radius);
+  background: var(--ml-bg);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+}
+
+.ml-lang-card h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ml-text);
+}
+
+.ml-lang-hint {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ml-muted);
+}
+
+.ml-lang-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ml-lang-btns button {
+  flex: 1 1 120px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--ml-border);
+  background: var(--ml-card);
+  color: var(--ml-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ml-lang-btns button:hover {
+  border-color: var(--ml-accent);
+  color: var(--ml-accent);
+}
+
+/* 设置里那一行只读语言 */
+.ml-lang-now {
+  margin: 2px 0 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ml-text);
+}
+
+/* 导出按钮：设置里最该被看见的那一个，做成整行主色按钮 */
+.ml-export {
+  width: 100%;
+  margin-top: 10px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--ml-accent);
+  background: var(--ml-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 650;
+  transition: transform 0.12s var(--ml-ease);
+}
+
+.ml-export:active {
+  transform: translateY(1px);
+}
+
+.ml-export-ico {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+/* ============ 导出弹层 ============
+ * 居中卡片、独立遮罩：它是叠在设置弹层之上的第二层，
+ * 用底部弹层会跟下面的设置面板挤在一起，看着像同一层。 */
+.ml-exp-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(15, 18, 22, 0.5);
+}
+
+.ml-exp-card {
+  position: fixed;
+  z-index: 71;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 24px);
+  max-width: 560px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--ml-radius);
+  background: var(--ml-bg);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+}
+
+.ml-exp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px calc(16px + env(safe-area-inset-bottom));
+}
+
+.ml-export-text {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 260px;
+  margin: 8px 0 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--ml-border);
+  background: var(--ml-card);
+  color: var(--ml-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+  resize: vertical;
+}
+
+/* 复制提示：说明「为什么没有下载按钮」，别让用户以为功能坏了 */
+.ml-export-tip {
+  margin: 0 0 10px;
+}
+
+/* 只有一个动作，就给成一整行主按钮 —— 这是这个弹层唯一要做的事 */
+.ml-export-actions {
+  display: flex;
+  padding-bottom: 4px;
+}
+
+.ml-export-actions .ml-strong {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 46px;
+  border-radius: 12px;
+  border: 1px solid var(--ml-accent);
+  background: var(--ml-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 650;
+}

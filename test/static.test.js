@@ -214,7 +214,7 @@ const inlineJs = dist.match(/<script>([\s\S]*)<\/script>/)[1];
 ok(inlineJs.includes('/* ===== src/event-core.js ===== */'), '内联脚本带来源横幅');
 ok(/\n {2,}\S/.test(inlineJs), '内联脚本保留源码缩进');
 ok(dist.includes('/* ===== src/styles.css ===== */'), '内联样式带来源横幅');
-ok(inlineJs.includes('语言优先级'), '内联脚本保留源码注释');
+ok(inlineJs.includes('语言存在同步数据里'), '内联脚本保留源码注释');
 
 // 宿主的安全检查（src/app/plugins/plugin-security.ts）只有一条正则：
 //   /require\s*\(\s*['"`](fs|child_process)/  →  'Attempts to use Node.js APIs without permission - will fail'

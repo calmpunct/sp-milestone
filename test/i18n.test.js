@@ -105,34 +105,19 @@ for (let w = 0; w < 7; w++) ok('week.' + w in base, '动态键 week.' + w);
 const Core = require('../src/event-core.js');
 Core.FESTIVALS.forEach((f) => ok('fest.' + f.key in base, '预设节日文案 fest.' + f.key));
 
-console.log('[4] 语言解析优先级');
-eq(I.resolve('zh', 'en-US'), 'zh', '显式选中文优先于宿主语言');
-eq(I.resolve('en', 'zh-CN'), 'en', '显式选英文优先于宿主语言');
-eq(I.resolve('auto', 'zh-CN'), 'zh', '自动 + 宿主中文 -> 中文');
-eq(I.resolve('auto', 'zh'), 'zh', '自动 + 宿主 zh -> 中文');
-eq(I.resolve('auto', 'en-GB'), 'en', '自动 + 宿主英文 -> 英文');
-eq(I.resolve('auto', 'de'), 'en', '自动 + 未支持的语言 -> 英文兜底');
-eq(I.resolve(null, 'zh-TW'), 'zh', '没有偏好时按宿主语言（地区码归一）');
-eq(I.resolve('fr', 'zh'), 'zh', '偏好的语言没装 -> 回落到宿主语言');
-eq(I.resolve('auto', ''), 'en', '什么都拿不到 -> 英文兜底');
-// 语言码形态：带地区码、大小写混写都要认（宿主 getCurrentLanguage() 返回字符串）
-eq(I.resolve('zh-CN', 'en'), 'zh', '偏好带地区码也能命中');
-eq(I.resolve('auto', 'zh-TW'), 'zh', '宿主语言带地区码也能归一');
-eq(I.resolve('auto', 'EN-us'), 'en', '大小写不敏感');
-eq(I.resolve(null, 'en-US'), 'en', '没有偏好时按宿主语言解析');
-
-console.log('[4.1] 宿主语言判定（pickHostLang）');
-// 核心场景：软件语言设成「跟随系统」时，宿主配置里 lng 为空，getCurrentLanguage() 只会
-// 回报默认值 en —— 中文系统 + 中文界面却拿到 en。设定值（空）必须让位给系统语言。
-eq(I.pickHostLang({ setting: '', cur: 'en', nav: 'zh-CN' }), 'zh', '跟随系统时按系统语言（中文）');
-eq(I.pickHostLang({ setting: '', cur: 'en', nav: 'en-US' }), 'en', '跟随系统 + 英文系统 -> 英文');
-eq(I.pickHostLang({ setting: 'zh', cur: 'en', nav: 'en-US' }), 'zh', '设定值优先于系统的错误回报');
-eq(I.pickHostLang({ setting: 'en', cur: 'zh', nav: 'zh-CN' }), 'en', '软件显式设成英文就信英文（不猜系统）');
-eq(I.pickHostLang({ setting: 'zh-tw', cur: '', nav: '' }), 'zh', '设定值带地区码也能归一');
-eq(I.pickHostLang({ setting: '', cur: 'zh', nav: 'en-US' }), 'zh', '没有设定值时 getCurrentLanguage 的非默认值可信');
-eq(I.pickHostLang({ setting: '', cur: 'en', switched: 'zh', nav: 'en-US' }), 'zh', 'languageChange 载荷兜底');
-eq(I.pickHostLang({ setting: '', cur: '', nav: '' }), 'en', '全都拿不到 -> 英文');
-eq(I.pickHostLang(), 'en', '空参数不崩');
+console.log('[4] 语言解析（只有同步数据一个来源）');
+eq(I.resolve('zh'), 'zh', '显式中文');
+eq(I.resolve('en'), 'en', '显式英文');
+eq(I.resolve('zh-CN'), 'zh', '带地区码也能归一');
+eq(I.resolve('EN-us'), 'en', '大小写不敏感');
+// 老数据里的 auto、坏值、空值都当成「还没选」→ 基准语言，界面会立刻弹选择框
+eq(I.resolve('auto'), 'zh', 'auto 不再跟随任何东西，回落到基准语言');
+eq(I.resolve(''), 'zh', '空值回落到基准语言');
+eq(I.resolve(null), 'zh', '缺值回落到基准语言');
+eq(I.resolve(undefined), 'zh', 'undefined 回落到基准语言');
+eq(I.resolve('fr'), 'zh', '没装的语言回落到基准语言');
+// 锁定语言后不再有任何「按宿主/系统语言猜」的入口
+eq(typeof I.pickHostLang, 'undefined', 'pickHostLang 已移除');
 
 console.log('[5] 取词与回落');
 I.setLang('en');

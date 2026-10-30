@@ -160,5 +160,48 @@ eq(RT.plan({ events: [], existing: [], today: TODAY }).add.length, 0, '空数据
 eq(RT.desiredTask(mk({ remind: { task: true, offsets: [] } }), TODAY), null, '没有档位不产生任务');
 eq(RT.desiredTask(mk({ remind: { task: true, offsets: [99] } }), TODAY), null, '非法档位不产生任务');
 
+/* ---------------- 10. 文案不一致：标题与备注一起修 ---------------- */
+
+console.log('[10] 标题与备注一起更新');
+// 语言锁定在数据里之后，两台设备算出的文案必然相同，直接比文本就够了。
+// 这里模拟「任务文案是别的语言写下的（旧版本遗留）」：必须一次把标题和备注都改过来，
+// 不能出现「标题换了、备注还是旧的」这种半更新。
+Core.setLang('en');
+const dEn = RT.desiredTask(mom, TODAY);
+Core.setLang('zh');
+ok(dEn.title !== d1.title, '中英文标题确实不同（前提成立）');
+
+const enTask = [task({ id: 't1', title: dEn.title, notes: dEn.notes, dueDay: dEn.dueDay, created: 1 })];
+p = RT.plan({ events: [mom], existing: enTask, today: TODAY });
+eq(p.update.length, 1, '文案不一致 → 一次更新');
+eq(p.update[0].patch.title, d1.title, '标题改成数据里的语言');
+eq(p.update[0].patch.notes, d1.notes, '备注同时改成数据里的语言');
+
+// 只改坏备注（标记还在）：标题不动，只补备注（不做无谓的标题写入）
+const brokenNotes = [task({
+  id: 't1', title: d1.title, dueDay: d1.dueDay, created: 1,
+  notes: '乱七八糟的内容\n' + RT.markLine('e1', d1.cycle)
+})];
+p = RT.plan({ events: [mom], existing: brokenNotes, today: TODAY });
+eq(p.update.length, 1, '备注被改坏 → 补备注');
+eq(p.update[0].patch.notes, d1.notes, '备注恢复');
+eq(p.update[0].patch.title, undefined, '标题一致时不动它');
+
+/* ---------------- 11. 归档 → 已处理 ---------------- */
+
+console.log('[11] 归档任务判定为已处理');
+const notes12 = RT.markLine('e1', '2027-05-14', 'abc');
+const h1 = RT.handledFromArchived([{ id: 'a1', notes: notes12, isDone: true }]);
+eq(h1['e1@2027-05-14'], true, '数组形态');
+const h2 = RT.handledFromArchived({ a1: { id: 'a1', notes: notes12 } });
+eq(h2['e1@2027-05-14'], true, '映射形态（键 → 任务）');
+const h3 = RT.handledFromArchived([{ task: { id: 'a1', notes: notes12 } }]);
+eq(h3['e1@2027-05-14'], true, '{task: …} 包装');
+const h4 = RT.handledFromArchived([{ id: 'a1', notes: notes12, isDone: false }]);
+eq(Object.keys(h4).length, 0, '未完成的归档不算已处理（否则提醒被静音）');
+const h5 = RT.handledFromArchived([{ id: 'a1', notes: '别人的任务' }]);
+eq(Object.keys(h5).length, 0, '无标记的归档任务不算');
+eq(Object.keys(RT.handledFromArchived(null)).length, 0, '空值安全');
+
 console.log(fail === 0 ? '\n✅ 全部通过' : `\n❌ 失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

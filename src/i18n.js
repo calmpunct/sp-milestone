@@ -5,11 +5,10 @@
  * 构建时 build.js 会把该目录下所有 .js 收进来（并把重复的键名合成一份），
  * 设置页的语言列表也随之自动生成 —— 新增一种语言只需要加一个文件。
  *
- * 语言优先级：
- *   1. settings.lang（用户在插件里明确选的语言）
- *   2. 宿主应用的语言（PluginAPI.getCurrentLanguage()，取不到时用 languageChange 载荷里的语言码）
- *   3. 系统语言（navigator.language）
- *   4. 英文（FALLBACK），再不行回落到基准语言
+ * 语言只有一个来源：settings.lang（同步数据里存着，首次打开时选一次就固定）。
+ * 不跟随宿主、也不跟随系统 —— 两台设备必须用同一种语言渲染任务文案，
+ * 否则同步起来两边会互相覆盖。数据里还没有语言时回落到基准语言，
+ * 那只是「用户还没选」的过渡态，界面会立刻弹出选择框。
  */
 (function (global, factory) {
   /* node-only:start （仅供 test/*.js require，构建时会整段剥离，勿在浏览器代码里引用）*/
@@ -75,32 +74,18 @@
     return String(code || '').toLowerCase().split(/[-_]/)[0];
   }
 
-  // 宿主的默认语言（Super Productivity 的 DEFAULT_LANGUAGE）
-  var HOST_DEFAULT = 'en';
-
   /**
-   * 决定「宿主当前的语言」，宿主那两个来源各有各的坑，必须合起来看：
-   *
-   *   · getCurrentLanguage()：底层是 PluginI18nService 的信号量，初值 DEFAULT_LANGUAGE（en），
-   *     只有当 globalConfig.localization.lng **有值**时才会被同步。所以用户在软件里把语言设成
-   *     「跟随系统」时 lng 是空的，信号量永远停在 en —— 中文界面也会回报 'en'。
-   *   · getAppState().globalConfig.localization.lng：真实设定值。空 = 跟随系统。
-   *
-   * 于是：设定值优先（哪怕它真是 en，那就是用户选的英文）；
-   * 设定值为空才落到系统语言 —— 此时宿主界面本身就跟随系统，与之一致。
-   * @param {{setting?:string, cur?:string, switched?:string, nav?:string}} src
-   *        setting 软件里设定的语言 / cur getCurrentLanguage() /
-   *        switched languageChange 载荷里的语言码 / nav 系统语言
+   * 语言代码 -> 实际可用的语言
+   * 认不出的（空值、坏值、带地区码的写法）一律回落到基准语言。
+   * @param {string} pref 语言代码
    */
-  function pickHostLang(src) {
-    src = src || {};
-    var setting = normCode(src.setting);
-    if (setting) return setting;
-    var cur = normCode(src.cur);
-    if (cur && cur !== HOST_DEFAULT) return cur;
-    var sw = normCode(src.switched);
-    if (sw && sw !== HOST_DEFAULT) return sw;
-    return normCode(src.nav) || HOST_DEFAULT;
+  function resolve(pref) {
+    var R = reg();
+    var p = normCode(pref);
+    if (p && R[p]) return p;
+    if (R[BASE]) return BASE;
+    if (R[FALLBACK]) return FALLBACK;
+    return BASE;
   }
 
   function dictOf(code) {
@@ -124,25 +109,8 @@
     return (d && d.__name) || code;
   }
 
-  /**
-   * 语言偏好 -> 实际可用语言
-   * @param {string} pref auto / 具体语言代码（也容忍 zh-CN 这种带地区码的写法）
-   * @param {string|{code:string}} hostLang 宿主应用语言（getCurrentLanguage() / cfg.lang）
-   */
-  function resolve(pref, hostLang) {
-    var R = reg();
-    var p = normCode(pref);
-    if (p && p !== 'auto' && R[p]) return p;
-
-    var host = normCode(hostLang);
-    if (host && R[host]) return host;
-
-    if (R[FALLBACK]) return FALLBACK;
-    return BASE;
-  }
-
   function setLang(l) {
-    lang = reg()[l] ? l : resolve(l, '');
+    lang = reg()[l] ? l : resolve(l);
   }
 
   function getLang() {
@@ -227,9 +195,8 @@
     html: html,
     safeHtml: safeHtml,
     apply: apply,
-    resolve: resolve,
-    pickHostLang: pickHostLang,
     normCode: normCode,
+    resolve: resolve,
     setLang: setLang,
     getLang: getLang,
     codes: codes,

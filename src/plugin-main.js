@@ -21,77 +21,25 @@
   var REBUILD_DELAY = 1500;         // 任务被外部删除后延迟重建，合并连续删除
   var MAX_TASKS = 200;              // 安全阀：避免异常数据一次灌爆任务列表
 
-  /* ---------------- 语言 ---------------- */
-
-  var hostLangCode = '';
-  // 软件里设定的语言（globalConfig.localization.lng）；空串 = 设成「跟随系统」
-  var hostLangSetting = '';
-
-  function navLang() {
-    try {
-      return (window.navigator && window.navigator.language) || '';
-    } catch (e) {
-      return '';
-    }
-  }
-
-  /**
-   * 宿主应用的语言，也就是「软件里设定的语言」。
-   * 不能只信 getCurrentLanguage()：语言设成「跟随系统」时宿主配置里 lng 为空，
-   * 插件 i18n 的信号量停在默认值 en，中文界面也会回报 'en'。
-   * 因此设定值（异步补读）优先，取不到才用钩子载荷 / getCurrentLanguage / 系统语言。
+  /* ---------------- 语言 ----------------
+   * 语言存在同步数据里：首次打开插件时选一次就固定，之后不再变。
+   * 这里不做任何「跟随系统 / 跟随宿主界面」的判断 —— 那会让两台设备各按各自的
+   * 系统语言渲染任务文案，同步起来就是你改我、我改你。锁定之后，两端算出的
+   * 标题与备注必然相同，对账时直接比文本就够了。
+   *
+   * settings.lang 为空只有两种可能：全新安装，或刚清空过数据 —— 都是「还没选」，
+   * 先用基准语言起一个，用户选完写进同步数据即以它为准。
    */
-  function hostLang() {
-    var api = P();
-    var cur = '';
-    try {
-      if (api && typeof api.getCurrentLanguage === 'function') cur = api.getCurrentLanguage() || '';
-    } catch (e) { /* 语言未就绪时继续用兜底值 */ }
-    return I.pickHostLang({
-      setting: hostLangSetting,
-      cur: cur,
-      switched: hostLangCode,
-      nav: navLang()
-    });
-  }
 
-  /**
-   * 补读「软件里设定的语言」，只更新缓存，不自己切语言
-   * （调用方拿到 true 之后再用已知的 settings 调一次 applyLang，避免与数据读取抢顺序）。
-   * @returns {Promise<boolean>} 设定值是否发生变化
-   */
-  function primeHostLang() {
-    var api = P();
-    if (!api || typeof api.getAppState !== 'function') return Promise.resolve(false);
-    return Promise.resolve(api.getAppState()).then(function (st) {
-      var cfg = st && st.globalConfig;
-      var loc = cfg && cfg.localization;
-      var lng = loc && typeof loc.lng === 'string' ? loc.lng : '';
-      if (lng === hostLangSetting) return false;
-      hostLangSetting = lng;
-      return true;
-    }, function () { return false; });
-  }
-
-  /**
-   * languageChange 的载荷：{ code, newLanguage }。
-   * 两个字段都取 —— 实测切回同一批语言时宿主只带 newLanguage，只认 code 会一直用上一次的值。
-   */
-  function payloadLang(payload) {
-    if (!payload) return '';
-    return payload.code || payload.newLanguage || '';
-  }
-
-  /** 语言偏好存在同步数据里；宿主侧与界面共用同一套解析规则 */
   function applyLang(settings) {
-    var l = I.resolve(settings && settings.lang, hostLang());
+    var l = I.dictOf(settings && settings.lang) ? settings.lang : (I.BASE || 'zh');
     I.setLang(l);
     EventCore.setLang(l);
     // 农历显示开关也跟数据走：任务备注里的日期文案必须与界面里看到的一致
     EventCore.setLunar(!!(settings && settings.lunar));
   }
 
-  // 入口名称在注册时就要定，此时同步数据还没读回来，先按宿主语言给一个
+  // 入口名称在注册时就要定，此时同步数据还没读回来，先按基准语言给一个
   applyLang(null);
 
   var dataCache = null;
@@ -250,21 +198,7 @@
       } catch (e) { /* ignore */ }
     }
 
-    // 宿主里切了语言：任务标题/备注要跟着换语言，数据没变也要重算一遍。
-    // 载荷里带着新的语言码，先落到本地再对账 —— 不依赖 cfg 里有没有 lang。
-    var langKey = api.Hooks.LANGUAGE_CHANGE;
-    if (langKey) {
-      try {
-        api.registerHook(langKey, function (payload) {
-          var code = payloadLang(payload);
-          if (code) hostLangCode = code;
-          // 设定值可能刚写进 globalConfig：补读后再按新语言对账
-          primeHostLang().then(function () {
-            applyLang(dataCache && dataCache.settings);
-            reconcile('language-change');
-          });
-        });
-      } catch (e) { /* ignore */ }    }
+    // 不监听 languageChange：语言锁定在同步数据里，宿主切语言与任务文案无关。
   }
 
   function scheduleRebuild(taskId) {
@@ -378,7 +312,8 @@
 
   /* 已处理记录：eventId@周期 → 时间戳
    * 作用：任务完成后被归档/删除时，不要重新生成一条「已完成过」的提醒。
-   * 只存在本机，丢了最多多提醒一次，不会丢提醒。 */
+   * 只存在本机，所以单靠它挡不住「另一台设备勾完」的情况 —— 那一路由对账时
+   * 查归档兜底（见 reconcile 的 4.0），命中的会补记到这里，省掉下一轮的归档查询。 */
   function readDone() {
     try {
       var raw = window.localStorage.getItem(DONE_KEY);
@@ -497,6 +432,35 @@
         // 4. 执行：先定标签、再补备注、再删、再改、最后加，避免标题重复和引用悬空
         var seq = Promise.resolve();
 
+        // 4.0 跨设备已完成：本机没记过「已处理」，但另一台已经勾完并归档了。
+        //     宿主只为本机操作触发 taskComplete，同步来的完成动作不会触发，
+        //     所以 ml-handled-v1 里没有记录；而归档任务不在 getAppState() 里，
+        //     不判一下就当成「任务丢了」，把已经完成的提醒重新建出来。
+        //     归档是同步的，读一次就能判出来；只在真要新增时才读（归档可能积累几年）。
+        if (plan.add.length && typeof api.getArchivedTasks === 'function') {
+          seq = seq.then(function () {
+            var arch;
+            try {
+              arch = api.getArchivedTasks();
+            } catch (e) {
+              return;
+            }
+            return Promise.resolve(arch).then(function (list) {
+              var handled = ReminderTasks.handledFromArchived(list);
+              var now = Date.now();
+              var hit = 0;
+              plan.add = plan.add.filter(function (a) {
+                var k = a.eventId + '@' + a.cycle;
+                if (!handled[k]) return true;
+                // 记进本机已处理表：否则每轮对账都要再翻一次归档
+                if (!done[k]) { done[k] = now; hit++; }
+                return false;
+              });
+              if (hit) writeDone(done);
+            }, function () { /* 拿不到归档就按原样新增，不影响主流程 */ });
+          });
+        }
+
         // 4.1 标签：任务不传 projectId（宿主落收件箱），靠标签归类。
         //     只在确实有任务要留在列表里时才创建，免得用户删光事项后留下一个空标签。
         var tagId = null;
@@ -552,42 +516,34 @@
           });
         });
 
-        var patched = Object.create(null);
+        // 4.2 更新：只改有差异的字段，标签缺了就顺手补上。
+        //     不去「巡视全场补标签」—— 用户自己摘掉标签是用户的选择，不跟他抢
         plan.update.forEach(function (u) {
-          patched[u.task.id] = true;
           seq = run(seq, function () {
             return Promise.resolve(api.updateTask(u.task.id, withTag(u.patch, u.task.tagIds)))
               .then(null, function () {});
           });
         });
 
-        // 4.2 老数据迁移：早先建在「里程碑提醒」项目里的任务没法安全搬项目
-        //     （宿主改 projectId 不会同步项目侧的 taskIds，任务会两头对不上），
-        //     这里只补标签，让它能按标签统一筛出来；任务原地不动。
-        managed.forEach(function (t) {
-          if (patched[t.id] || removeSeen[t.id]) return;
-          seq = run(seq, function () {
-            if (!tagId) return Promise.resolve();
-            var cur = Array.isArray(t.tagIds) ? t.tagIds : [];
-            if (cur.indexOf(tagId) !== -1) return Promise.resolve();
-            return Promise.resolve(api.updateTask(t.id, { tagIds: cur.concat(tagId) }))
-              .then(null, function () {});
+        // 新增放在最后一个执行步里、**执行时**再读 plan.add：
+        // 4.0 会异步过滤掉「另一端已经做完」的条目，提前 forEach 会把它漏判。
+        seq = seq.then(function () {
+          var chain = Promise.resolve();
+          plan.add.forEach(function (a) {
+            chain = run(chain, function () {
+              var payload = {
+                title: a.title,
+                notes: a.notes,
+                dueDay: a.dueDay
+              };
+              // 只给标签、不给 projectId：任务落到收件箱
+              if (tagId) payload.tagIds = [tagId];
+              return Promise.resolve(api.addTask(payload)).then(function (id) {
+                if (id) { map[id] = a.eventId; mapDirty = true; }
+              }, function () { /* 单条失败不影响其它 */ });
+            });
           });
-        });
-
-        plan.add.forEach(function (a) {
-          seq = run(seq, function () {
-            var payload = {
-              title: a.title,
-              notes: a.notes,
-              dueDay: a.dueDay
-            };
-            // 只给标签、不给 projectId：任务落到收件箱
-            if (tagId) payload.tagIds = [tagId];
-            return Promise.resolve(api.addTask(payload)).then(function (id) {
-              if (id) { map[id] = a.eventId; mapDirty = true; }
-            }, function () { /* 单条失败不影响其它 */ });
-          });
+          return chain;
         });
 
         return seq.then(function () {
@@ -639,13 +595,9 @@
 
   // 启动时先读一次数据：拿到 settings.lang 后文案才定下来，boot 对账时标题/备注才是对的。
   // 任务投影等 boot 的 3.5 秒后再动，避免和宿主启动流程抢资源。
-  // 语言设定值（globalConfig.localization.lng）也在这时补读：跟随系统时宿主只会回报默认值 en，
-  // 不补读的话任务标题会一直是英文。
-  Promise.all([loadData(), primeHostLang()]).then(function (r) {
-    dataCache = r[0];
-    // 语言设定值晚到：按它重算一次（此时才有 settings 可用，不会覆盖用户的语言偏好）
-    if (r[1]) applyLang(dataCache.settings);
-  }, function () { /* 读不到就继续用宿主语言，等 boot 再来 */ });
+  loadData().then(function (data) {
+    dataCache = data;
+  }, function () { /* 读不到就继续用基准语言，等 boot 再来 */ });
 
   function boot() {
     // 稍等一下，避免和宿主启动提示抢镜

@@ -165,19 +165,11 @@ async function run() {  await new Promise((r) => {
   $('#mlSetClose').click();
   await wait(360);
 
-  console.log('[8] 英文：单位字跟着语言换');
+  console.log('[8] 语言锁定：设置里只剩只读展示');
   $('#mlSettings').click();
-  await wait(120);
-  $('#sLang button[data-v="en"]').click();
-  await wait(200);
-  $('#sTick').click();
-  await wait(160);
-  ok(!!heroTick(), '英文界面下也有计时行');
-  ok(/^\d{2}h\d{2}m\d{2}s$/.test(heroTick().textContent), '英文读数是 01h50m32s：' + heroTick().textContent);
-  $('#sTick').click();
-  await wait(120);
-  $('#sLang button[data-v="zh"]').click();
-  await wait(200);
+  await wait(140);
+  eq($('#sLangNow').textContent, '简体中文', '只读展示当前语言');
+  eq($('#sLang'), null, '没有可点的语言按钮（锁定后不再提供切换）');
   $('#mlSetClose').click();
   await wait(360);
 

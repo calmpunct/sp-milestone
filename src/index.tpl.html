@@ -198,8 +198,9 @@
 
       <div class="ml-field">
         <span class="ml-label" data-i18n="lang"></span>
-        <!-- 按钮由 app.js 按已注册的语言包生成：加一个语言包就多一个选项 -->
-        <div class="ml-seg" id="sLang"></div>
+        <!-- 语言在首次打开时选定后固定，这里只做只读展示（换语言要先清除数据） -->
+        <p class="ml-lang-now" id="sLangNow"></p>
+        <p class="ml-hint" data-i18n="lang.locked"></p>
       </div>
 
       <div class="ml-field">
@@ -241,6 +242,16 @@
       <div class="ml-field">
         <span class="ml-label" data-i18n="set.data"></span>
         <p class="ml-hint" id="sDataInfo"></p>
+        <button type="button" class="ml-export" id="sExport">
+          <svg class="ml-export-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v11"/>
+            <path d="M8 10l4 4 4-4"/>
+            <path d="M4 18v1a2 2 0 002 2h12a2 2 0 002-2v-1"/>
+          </svg>
+          <span data-i18n="set.export"></span>
+        </button>
+        <p class="ml-hint" data-i18n="set.exportHint"></p>
         <button type="button" class="ml-danger" id="sClear" data-i18n="set.clear"></button>
         <p class="ml-hint" data-i18n-html="set.clearHint"><b>不会</b>影响应用里的其他任务与项目。</p>
       </div>
@@ -262,6 +273,42 @@
                target="_blank" rel="noopener noreferrer">github.com/calmpunct/sp-milestone/issues</a>
           </p>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 首次打开（或刚清空数据）时的语言选择：必须选一次，选完固定。
+     文案写成中英双语 —— 此刻还没有语言可用，没法走语言包。 -->
+<div id="mlLangLayer" hidden>
+  <div class="ml-lang-mask"></div>
+  <div class="ml-lang-card" role="dialog" aria-modal="true" aria-labelledby="mlLangTitle">
+    <h2 id="mlLangTitle">选择语言 · Choose your language</h2>
+    <p class="ml-lang-hint">
+      选定后固定，不再跟随系统；任务提醒的文案也用这一种。<br>
+      Fixed once chosen — no auto-switching. To change it later, clear the data first.
+    </p>
+    <!-- 按钮由 app.js 按已注册的语言包生成 -->
+    <div class="ml-lang-btns" id="mlLangPick"></div>
+  </div>
+</div>
+
+<!-- 导出：文本先落在这个 textarea 里，能复制也能下载 ——
+     沙箱 iframe 里不一定允许 download，所以「复制」是主路径。 -->
+<div id="mlExpLayer" hidden>
+  <div class="ml-exp-mask" id="mlExpMask"></div>
+  <div class="ml-exp-card" role="dialog" aria-modal="true" aria-labelledby="mlExpTitle">
+    <div class="ml-sheet-head">
+      <button type="button" id="mlExpClose" data-i18n="close"></button>
+      <h2 id="mlExpTitle" data-i18n="export.title"></h2>
+      <span class="ml-head-spacer" aria-hidden="true"></span>
+    </div>
+    <div class="ml-exp-body">
+      <textarea id="expText" class="ml-export-text" readonly spellcheck="false"></textarea>
+      <p class="ml-hint ml-export-tip" data-i18n="export.copyHint"></p>
+      <div class="ml-export-actions">
+        <!-- 只保留复制：宿主 iframe 里下载会被拦，给个按钮只会让人以为坏了 -->
+        <button type="button" id="expCopy" class="ml-strong" data-i18n="export.copy"></button>
       </div>
     </div>
   </div>

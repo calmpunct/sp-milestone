@@ -1007,12 +1007,12 @@ async function backToList() {
     eq(document.querySelectorAll('.ml-item').length, 1, '新条目正常显示');
   }
 
-  console.log('[21] 跟随软件语言 / 手动切换');
+  console.log('[21] 语言锁定：设置里只读，宿主切语言不影响');
   {
-    // 宿主语言 = 英文，插件语言设为 auto → 界面应为英文
+    // 语言存在同步数据里（lang: en），宿主语言是中文也不该被带跑
     const seed = {
       version: 1,
-      settings: { lang: 'auto', taskTag: 'milestone', hero: true },
+      settings: { lang: 'en', taskTag: 'milestone', hero: true },
       events: [{ id: 'l1', title: 'Mom birthday', kind: 'birthday', calendar: 'solar',
         date: '1990-05-12', repeat: true, color: '#d6336c', note: '' }]
     };
@@ -1026,8 +1026,9 @@ async function backToList() {
       beforeParse(w3) {
         w3.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
         w3.PluginAPI = {
-          cfg: { lang: 'en' },
+          cfg: { lang: 'zh' },
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          getCurrentLanguage() { return 'zh'; },
           onReady(fn) { setTimeout(fn, 0); },
           registerHook(k, fn) { hooks[k] = fn; },
           showIndexHtmlAsView() {},
@@ -1041,50 +1042,33 @@ async function backToList() {
     const $3 = (s) => d3.querySelector(s);
     await new Promise((r) => setTimeout(r, 300));
 
-    eq($3('.ml-title').textContent, 'Milestone', '标题跟随软件语言（英文，品牌名单数）');
+    eq($3('.ml-title').textContent, 'Milestone', '按同步数据里的语言渲染（英文品牌名单数）');
     eq($3('.ml-chip[data-f="all"]').textContent, 'All', '筛选条为英文');
     ok($3('.ml-sub').textContent.indexOf('1 entry') === 0, '副标题用英文单数：' + $3('.ml-sub').textContent);
-    ok($3('.ml-hero-label').textContent.indexOf('in') !== -1, '置顶卡片文案为英文');
-    ok($3('.ml-item-num i').textContent === 'days' || $3('.ml-item-num i').textContent === 'today',
-      '天数单位英文化');
-    eq($3('.ml-tag').textContent, 'Birthday', '类型标签英文化');
+    eq($3('#mlLangLayer').hidden, true, '已经选过语言，不再弹选择框');
 
-    // 在插件里手动选中文：界面切换 + 写入同步数据
+    // 设置面板：语言只读，没有任何可点的语言按钮
     $3('#mlSettings').click();
     await new Promise((r) => setTimeout(r, 420));
-    ok(!!$3('#sLang button[data-v="zh"]'), '语言列表按已注册语言包生成');
-    $3('#sLang button[data-v="zh"]').click();
-    await new Promise((r) => setTimeout(r, 240));
-    eq($3('.ml-title').textContent, '里程碑', '手动选中文后界面切中文');
-    eq($3('.ml-sub').textContent[0], '1', '副标题回到中文计数');
-    ok(JSON.parse(saves[saves.length - 1]).settings.lang === 'zh', '语言偏好写入同步数据');
+    ok(!!$3('#sLangNow'), '设置里有语言这一行');
+    eq($3('#sLangNow').textContent, 'English', '只读展示当前语言');
+    ok(!$3('#sLang'), '语言选择按钮已移除（锁定）');
 
-    // 软件里切成英文（languageChange）→ 偏好是 zh，不应被覆盖
-    hooks.languageChange && hooks.languageChange({ newLanguage: 'en' });
-    await new Promise((r) => setTimeout(r, 120));
-    eq($3('.ml-title').textContent, '里程碑', '显式选定语言时不跟随软件语言');
-
-    // 切回自动 → 立刻跟随软件语言（英文）
-    $3('#sLang button[data-v="auto"]').click();
-    await new Promise((r) => setTimeout(r, 240));
-    eq($3('.ml-title').textContent, 'Milestone', '自动模式下跟随软件语言');
-    eq(JSON.parse(saves[saves.length - 1]).settings.lang, 'auto', '自动模式写回 auto');
+    // 宿主切语言：与插件无关，界面不变、也不写盘
+    const before = saves.length;
+    hooks.languageChange && hooks.languageChange({ code: 'zh', newLanguage: 'zh' });
+    await new Promise((r) => setTimeout(r, 200));
+    eq($3('.ml-title').textContent, 'Milestone', '宿主切中文，插件界面不动');
+    eq(saves.length, before, '没有因为切语言而写回数据');
     dom3.window.close();
   }
 
-  console.log('[22] 真实宿主形状：cfg 里没有 lang，只有 getCurrentLanguage() + 钩子载荷');
+  console.log('[22] 首次打开：必须选一次语言，不做任何自动识别');
   {
-    // Super Productivity 19.x 的 PluginAPI.cfg 是 { theme, appVersion, platform, isDev }，
-    // 语言只能通过 getCurrentLanguage() 拿到；切语言靠 languageChange 载荷。之前只读 cfg.lang，
-    // 结果「自动」永远跟着系统语言走 —— 这条用例守住那个回归。
-    const seed = {
-      version: 1,
-      settings: { lang: 'auto', taskTag: 'milestone', hero: true },
-      events: [{ id: 'g1', title: 'Mom birthday', kind: 'birthday', calendar: 'solar',
-        date: '1990-05-12', repeat: true, color: '#d6336c', note: '' }]
-    };
+    // 全新数据（没有 lang），宿主明确回报中文 —— 也不能替用户决定
+    const seed = { version: 1, settings: { taskTag: 'milestone', hero: true }, events: [] };
     const hooks = {};
-    let hostLang = 'en';
+    const saves = [];
     const dom4 = new JSDOM(html, {
       runScripts: 'dangerously',
       pretendToBeVisual: true,
@@ -1093,14 +1077,13 @@ async function backToList() {
       beforeParse(w4) {
         w4.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
         w4.PluginAPI = {
-          cfg: { theme: 'light', appVersion: '19.3.1', platform: 'desktop', isDev: false },
           Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
-          getCurrentLanguage() { return hostLang; },
+          getCurrentLanguage() { return 'zh'; },
           onReady(fn) { setTimeout(fn, 0); },
           registerHook(k, fn) { hooks[k] = fn; },
           showIndexHtmlAsView() {},
           loadSyncedData() { return Promise.resolve(JSON.stringify(seed)); },
-          persistDataSynced() { return Promise.resolve(); },
+          persistDataSynced(s) { saves.push(s); return Promise.resolve(); },
           openDialog() { return Promise.resolve('Cancel'); }
         };
       }
@@ -1109,20 +1092,20 @@ async function backToList() {
     const $4 = (s) => d4.querySelector(s);
     await new Promise((r) => setTimeout(r, 300));
 
-    eq($4('.ml-title').textContent, 'Milestone', '自动模式按 getCurrentLanguage() 取英文');
+    eq($4('#mlLangLayer').hidden, false, '没选过语言 → 先弹选择框');
+    ok(!!$4('#mlLangPick button[data-lang="zh"]'), '有中文按钮');
+    ok(!!$4('#mlLangPick button[data-lang="en"]'), '有英文按钮');
 
-    // 软件里切成中文：载荷是 { code, newLanguage }，插件要立刻跟着变
-    hostLang = 'zh';
+    $4('#mlLangPick button[data-lang="en"]').click();
+    await new Promise((r) => setTimeout(r, 320));
+    eq($4('#mlLangLayer').hidden, true, '选完收起');
+    eq($4('.ml-title').textContent, 'Milestone', '界面切到英文（宿主语言是中文也不跟）');
+    eq(JSON.parse(saves[saves.length - 1]).settings.lang, 'en', '语言写进同步数据');
+
+    // 之后宿主再切语言都不影响
     hooks.languageChange && hooks.languageChange({ code: 'zh', newLanguage: 'zh' });
     await new Promise((r) => setTimeout(r, 200));
-    eq($4('.ml-title').textContent, '里程碑', '切语言后界面立刻跟随（不依赖 cfg.lang）');
-    eq($4('.ml-chip[data-f="all"]').textContent, '全部', '筛选条跟着切中文');
-
-    // 再切回英文
-    hostLang = 'en';
-    hooks.languageChange && hooks.languageChange({ newLanguage: 'en' });
-    await new Promise((r) => setTimeout(r, 200));
-    eq($4('.ml-title').textContent, 'Milestone', '再切回英文同样生效');
+    eq($4('.ml-title').textContent, 'Milestone', '锁定后宿主切中文也不变');
     dom4.window.close();
   }
 
@@ -1273,14 +1256,14 @@ async function backToList() {
     dom7.window.close();
   }
 
-  console.log('[22.3] 软件语言设成「跟随系统」时不能落到英文');
+  console.log('[22.3] 界面语言只看同步数据，宿主怎么配都不影响');
   {
     // 宿主的坑：语言设成「跟随系统」时 globalConfig.localization.lng 为空，
     // PluginI18nService 的信号量停在默认值 en，getCurrentLanguage() 于是回报 'en'，
     // 而界面其实是跟随系统（中文）。实测症状：中文系统 + 中文软件 -> 插件英文。
     const seed = {
       version: 1,
-      settings: { lang: 'auto', taskTag: 'milestone', hero: true },
+      settings: { lang: 'zh', taskTag: 'milestone', hero: true },
       events: [{ id: 'sys1', title: '妈妈生日', kind: 'birthday', calendar: 'solar',
         date: '1990-05-12', repeat: true, color: '#d6336c', note: '' }]
     };
@@ -1314,34 +1297,16 @@ async function backToList() {
       return dom8;
     };
 
-    // 跟随系统（lng 空）+ 中文系统 + 宿主回报 en -> 中文
-    const follow = boot('', 'en', 'zh-CN');
-    await new Promise((r) => setTimeout(r, 320));
-    eq(follow.window.document.querySelector('.ml-title').textContent, '里程碑',
-      '跟随系统 + 中文系统 -> 中文界面');
-    follow.window.close();
-
-    // 软件里显式选了中文（lng = zh），但 getCurrentLanguage() 还没同步过来（回报 en）+ 英文系统
-    // -> 必须靠异步补读的设定值拿到中文，这是只有 getAppState() 能提供的信息
-    const forcedZh = boot('zh', 'en', 'en-US');
-    await new Promise((r) => setTimeout(r, 320));
-    eq(forcedZh.window.document.querySelector('.ml-title').textContent, '里程碑',
-      '软件设中文时补读设定值也切到中文');
-    forcedZh.window.close();
-
-    // 软件里显式选了英文（lng = en）+ 中文系统 -> 仍然是英文（不猜系统）
-    const forcedEn = boot('en', 'en', 'zh-CN');
-    await new Promise((r) => setTimeout(r, 320));
-    eq(forcedEn.window.document.querySelector('.ml-title').textContent, 'Milestone',
-      '软件显式设英文时保持英文');
-    forcedEn.window.close();
-
-    // 跟随系统 + 英文系统 -> 英文
-    const enSys = boot('', 'en', 'en-US');
-    await new Promise((r) => setTimeout(r, 320));
-    eq(enSys.window.document.querySelector('.ml-title').textContent, 'Milestone',
-      '跟随系统 + 英文系统 -> 英文界面');
-    enSys.window.close();
+    // 数据里写的是中文：宿主配成「跟随系统」、显式英文、英文系统，都不该把界面带走。
+    // 锁定语言之后这类「按宿主/系统猜语言」的分支已经整体移除，这条用例守住它不回来。
+    const combos = [['', 'en', 'zh-CN'], ['en', 'en', 'en-US'], ['zh', 'en', 'en-US']];
+    for (const [lng, cur, nav] of combos) {
+      const b = boot(lng, cur, nav);
+      await new Promise((r) => setTimeout(r, 320));
+      eq(b.window.document.querySelector('.ml-title').textContent, '里程碑',
+        '数据 lang=zh → 中文（宿主 ' + JSON.stringify([lng, cur, nav]) + '）');
+      b.window.close();
+    }
   }
 
   console.log('[24] 农历开关：默认关闭时不出现任何农历元素');
@@ -1561,17 +1526,18 @@ async function backToList() {
     domD.window.close();
   }
 
-  console.log('[27] 表单开着切语言：下拉跟着换；表单关着时不重建');
+  console.log('[27] 表单开着时同步回写带来语言变化：下拉跟着换；关着时不重建');
   {
+    // 语言已经锁定，但它仍可能被「同步回写」改动（另一台设备清空数据后重选、老数据迁移）。
+    // 这条路径必须和原来的切语言一样安全：表单开着时重建下拉，但不能清掉用户的选择。
     const seed = {
       version: 1,
-      settings: { lang: 'auto', lunar: true },
+      settings: { lang: 'zh', lunar: true },
       events: [
         { id: 'l1', title: '妈妈', kind: 'birthday', calendar: 'lunar', date: '1968-05-14',
           lunar: { year: 1968, month: 4, day: 18, isLeap: false }, repeat: true, color: '#d6336c', note: '' }
       ]
     };
-    let curLang = 'zh';
     const domL = new JSDOM(html, {
       runScripts: 'dangerously',
       pretendToBeVisual: true,
@@ -1583,12 +1549,10 @@ async function backToList() {
         w.__SAVES__ = [];
         w.__hooks = {};
         w.PluginAPI = {
-          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged', LANGUAGE_CHANGE: 'languageChange' },
+          Hooks: { PERSISTED_DATA_CHANGED: 'persistedDataChanged' },
           onReady(fn) { setTimeout(fn, 0); },
           registerHook(k, fn) { w.__hooks[k] = fn; },
           showIndexHtmlAsView() {},
-          getCurrentLanguage() { return curLang; },
-          getAppState() { return Promise.resolve({ globalConfig: { localization: { lng: '' } } }); },
           loadSyncedData() { return Promise.resolve(w.__STORE__); },
           persistDataSynced(s) { w.__STORE__ = s; w.__SAVES__.push(s); return Promise.resolve(); },
           openDialog() { return Promise.resolve('取消'); }
@@ -1597,6 +1561,13 @@ async function backToList() {
     });
     const dL = domL.window.document;
     const $L = (s) => dL.querySelector(s);
+    const pushLang = async (lang) => {
+      domL.window.__STORE__ = JSON.stringify(Object.assign({}, seed, {
+        settings: Object.assign({}, seed.settings, { lang: lang })
+      }));
+      domL.window.__hooks.persistedDataChanged();
+      await new Promise((r) => setTimeout(r, 260));
+    };
     await new Promise((r) => setTimeout(r, 320));
 
     ok($L('.ml-title').textContent.indexOf('里程碑') !== -1, '启动是中文：' + $L('.ml-title').textContent);
@@ -1614,14 +1585,12 @@ async function backToList() {
     colorBtns[pickIdx].click();
     const pickedColor = colorBtns[pickIdx].dataset.c;
 
-    // 宿主里切成英文：表单开着，下拉必须跟着换语言（option 文案按语言拼）
-    curLang = 'en';
-    domL.window.__hooks.languageChange({ code: 'en', newLanguage: 'en' });
-    await new Promise((r) => setTimeout(r, 260));
+    // 同步回写把语言改成英文：表单开着，下拉必须跟着换语言（option 文案按语言拼）
+    await pushLang('en');
     eq($L('#mlLayer').hidden, false, '表单仍开着');
     eq($L('#fLY'), yearSel, '下拉元素本身没被替换');
     eq($L('#fLY').options.length, 201, '仍然是 201 项');
-    eq($L('#fLY').firstElementChild.textContent, '1900', '表单开着切语言：年份文案跟着变英文');
+    eq($L('#fLY').firstElementChild.textContent, '1900', '表单开着换语言：年份文案跟着变英文');
     eq($L('#fLY').value, yearVal, '当前选中的年份保留');
     eq($L('#fColors .ml-color[aria-pressed="true"]').dataset.c, pickedColor, '手选的颜色不被重建清掉');
 
@@ -1629,17 +1598,40 @@ async function backToList() {
     await new Promise((r) => setTimeout(r, 420));
     const optBefore = $L('#fLY').firstElementChild;
 
-    // 表单关着切回中文：不再白造 201 个 option，等下次开表单时再按新语言建
-    curLang = 'zh';
-    domL.window.__hooks.languageChange({ code: 'zh', newLanguage: 'zh' });
-    await new Promise((r) => setTimeout(r, 260));
+    // 表单关着再换回中文：不再白造 201 个 option，等下次开表单时再按新语言建
+    await pushLang('zh');
     ok($L('.ml-title').textContent.indexOf('里程碑') !== -1, '界面回到中文');
-    eq($L('#fLY').firstElementChild, optBefore, '表单关着时切语言不重建年份下拉');
+    eq($L('#fLY').firstElementChild, optBefore, '表单关着时不重建年份下拉');
 
     $L('#mlAdd').click();
     await new Promise((r) => setTimeout(r, 200));
     eq($L('#fLY').firstElementChild.textContent, '1900 年', '再次打开表单时按当前语言重建');
     domL.window.close();
+  }
+
+  console.log('[22.4] 导出为 TXT');
+  {
+    $('#mlSettings').click();
+    await wait(160);
+    $('#sExport').click();
+    await wait(100);
+    eq($('#mlExpLayer').hidden, false, '导出弹层打开');
+    const text = $('#expText').value;
+    ok(text.indexOf('里程碑 · 事项备份') === 0, '文本以标题开头');
+    ok(text.indexOf('【') !== -1, '按分类分组');
+    ok(text.indexOf('导出时间：') !== -1, '带导出时间');
+    // 宿主里下载会被拦，所以只留复制，并在界面上说清楚
+    eq($('#expDownload'), null, '没有下载按钮（避免点了没反应）');
+    ok(!!$('#expCopy'), '有复制按钮');
+    ok($('#expText').readOnly, '文本区只读（防误改后再复制）');
+
+    // 关掉导出层，下面的设置层还在（两层叠加，Esc 只收最上面那层）
+    $('#mlExpClose').click();
+    await wait(60);
+    eq($('#mlExpLayer').hidden, true, '关闭导出层');
+    eq($('#mlSetLayer').hidden, false, '设置层仍在');
+    $('#mlSetClose').click();
+    await wait(380);
   }
 
   console.log('[23] 无运行时错误');

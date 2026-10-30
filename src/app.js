@@ -116,107 +116,74 @@
     }
   };
 
-  /* ================= 语言 ================= */
+  /* ================= 语言 =================
+   * 语言存在同步数据里：首次打开时选一次就固定，之后不再变。
+   * 不跟随系统、也不跟随宿主界面的语言 —— 那会让两台设备各按各自的系统语言
+   * 渲染任务文案，同步起来就是「你改我、我改你」。锁定之后，两端算出来的
+   * 任务标题与备注必然一致，直接比文本就够了。
+   */
 
-  // 宿主没有给出语言时，用 languageChange 钩子带回的语言码兜底（见下方 hostLang）
-  var hostLangCode = '';
-  // 软件里设定的语言（globalConfig.localization.lng）；空串 = 设成「跟随系统」
-  var hostLangSetting = '';
-  // getCurrentLanguage() 的最近一次结果
-  var hostLangCur = '';
-
-  /** 本机系统语言（宿主没有给出语言时兜底） */
-  function navLang() {
-    try {
-      return (window.navigator && window.navigator.language) || '';
-    } catch (e) {
-      return '';
-    }
+  /** 数据里定下的语言；空串 = 还没选（全新安装、或刚清空数据） */
+  function langNow() {
+    var l = state.data.settings && state.data.settings.lang;
+    return I.dictOf(l) ? l : '';
   }
 
-  /**
-   * 宿主应用的语言，即「软件里设定的语言」。
-   * 三个来源合起来判断（为什么不能只信 getCurrentLanguage，见 I18N.pickHostLang 的注释）：
-   *   globalConfig.localization.lng（异步补读，最准）> getCurrentLanguage() > languageChange > 系统语言
-   */
-  function hostLang() {
-    try {
-      var P = window.PluginAPI;
-      if (P && typeof P.getCurrentLanguage === 'function') {
-        var cur = P.getCurrentLanguage();
-        if (cur) hostLangCur = cur;
+  /** 设置面板里的语言行：只读展示当前语言（换语言要清数据，见 lockLangHint） */
+  function renderLangInfo() {
+    var el = $('#sLangNow');
+    if (el) el.textContent = I.nameOf(I.getLang());
+  }
+
+  /** 首次打开 / 刚清空数据：必须先选一种语言，选完才放行 */
+  function askLangIfNeeded() {
+    var layer = $('#mlLangLayer');
+    if (!layer) return;
+    if (langNow()) { layer.hidden = true; return; }
+    var box = $('#mlLangPick');
+    if (box && !box.childNodes.length) {
+      var list = I.codes();
+      var html = '';
+      for (var i = 0; i < list.length; i++) {
+        html += '<button type="button" data-lang="' + esc(list[i]) + '">' +
+          esc(I.nameOf(list[i])) + '</button>';
       }
-    } catch (e) { /* 语言未就绪时继续用兜底值 */ }
-    return I.pickHostLang({
-      setting: hostLangSetting,
-      cur: hostLangCur,
-      switched: hostLangCode,
-      nav: navLang()
-    });
-  }
-
-  /**
-   * 补读「软件里设定的语言」。
-   * getCurrentLanguage() 在「跟随系统」时会一直回报默认值 en（中文界面也一样），
-   * 只有 globalConfig.localization.lng 能区分「真的英文」和「跟随系统」。
-   * @returns {Promise<boolean>} 设定值是否发生变化
-   */
-  function primeHostLang() {
-    var P = window.PluginAPI;
-    if (!P || typeof P.getAppState !== 'function') return Promise.resolve(false);
-    return apiCall('getAppState').then(function (st) {
-      var cfg = st && st.globalConfig;
-      var loc = cfg && cfg.localization;
-      var lng = loc && typeof loc.lng === 'string' ? loc.lng : '';
-      if (lng === hostLangSetting) return false;
-      hostLangSetting = lng;
-      return true;
-    }, function () { return false; });
-  }
-
-  /**
-   * languageChange 的载荷：{ code, newLanguage }。
-   * 两个字段都取 —— 实测切回同一批语言时宿主只带 newLanguage，只认 code 会一直用上一次的值。
-   */
-  function payloadLang(payload) {
-    if (!payload) return '';
-    return payload.code || payload.newLanguage || '';
-  }
-
-  /** 当前语言偏好（数据里可能没有这一项） */
-  function langPref() {
-    return (state.data.settings && state.data.settings.lang) || 'auto';
-  }
-
-  /** 设置面板里的语言选择：语言包加进来就自动多一个按钮 */
-  function buildLangSeg() {
-    var box = $('#sLang');
-    if (!box) return;
-    var list = I.codes();
-    var html = '<button type="button" data-v="auto">' + esc(t('lang.auto')) + '</button>';
-    for (var i = 0; i < list.length; i++) {
-      html += '<button type="button" data-v="' + esc(list[i]) + '">' + esc(I.nameOf(list[i])) + '</button>';
+      box.innerHTML = html;
     }
-    box.innerHTML = html;
-    setSeg('#sLang', langPref());
+    layer.hidden = false;
+  }
+
+  /** 用户选定语言：写进同步数据，之后一直用它 */
+  function pickLang(code) {
+    if (!I.dictOf(code)) return;
+    if (!state.data.settings) state.data.settings = Core.emptySettings();
+    state.data.settings.lang = code;
+    applyLang(code);
+    renderAll();
+    refreshSettingsForm();
+    // 立刻落盘：语言是一次性决定，不能等 200ms 防抖 —— 这期间关掉窗口就白选了
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    saveNow(JSON.stringify(state.data));
+    var layer = $('#mlLangLayer');
+    if (layer) layer.hidden = true;
   }
 
   /**
    * 应用语言并刷新所有按语言生成的界面：
-   * 静态文案（data-i18n）、农历下拉、节日预设、颜色按钮、语言列表、设置项提示。
-   * @param {string} pref auto / 具体语言代码
+   * 静态文案（data-i18n）、农历下拉、节日预设、颜色按钮、设置项提示。
+   * @param {string} pref 语言代码；空/不认识时先用基准语言把骨架铺出来
    */
   function applyLang(pref) {
-    var l = I.resolve(pref, hostLang());
+    var l = I.dictOf(pref) ? pref : (I.BASE || 'zh');
     I.setLang(l);
     Core.setLang(l);
     document.documentElement.setAttribute('lang', l);
     document.title = t('appName');
     I.apply(document);
-    buildLangSeg();
+    renderLangInfo();
 
     // 表单开着时要重建下拉与预设按钮：重建会把用户当前的选择清空，先把农历三列存下来。
-    // 这条路径现在不只在切语言时走 —— 补读语言设定值（primeHostLang）也会异步触发一次，
+    // 语言本身已经锁定，但同步回写仍可能带着别的语言进来（另一台设备清空后重选），
     // 所以不能假设「此刻用户没在填表」。
     var layer = $('#mlLayer');
     var drafting = !!(layer && !layer.hidden && state.draft);
@@ -232,7 +199,7 @@
 
     // 下拉、预设、颜色按钮的地盘都是 #mlLayer：表单没开时重建等于白做
     // （光年份下拉就是 201 个 option）。表单开着时必须重建 —— option 文案跟着语言变，
-    // 而 primeHostLang 是异步补读的，完全可能在用户填表途中返回。
+    // 而同步回写是异步的，完全可能在用户填表途中到达。
     if (drafting) {
       buildYearSelect();
       buildMonthSelect();
@@ -263,16 +230,6 @@
     refreshDetail();
   }
 
-  /** 用户切换语言：写进同步数据，让任务投影用同一种语言 */
-  function setLangPref(pref) {
-    if (!state.data.settings) state.data.settings = Core.emptySettings();
-    state.data.settings.lang = I.dictOf(pref) ? pref : 'auto';
-    applyLang(state.data.settings.lang);
-    renderAll();
-    refreshSettingsForm();
-    persist();
-    toast(t('toast.saved'));
-  }
 
   /* ================= 工具 ================= */
 
@@ -1773,7 +1730,7 @@
     var st = state.data.settings || Core.emptySettings();
     $('#sHero').checked = st.hero !== false;
     $('#sTick').checked = st.tick === true;
-    setSeg('#sLang', st.lang || 'auto');
+    renderLangInfo();
 
     // 农历开关：数据里还有农历事项时锁死在「开」——
     // 关掉之后这些记录在界面上只剩公历、也改不了历法，等于把数据藏起来
@@ -1823,6 +1780,8 @@
 
     closeSettings();
     renderAll();
+    // 语言跟着数据一起清掉了：重新弹一次选择框（这是换语言的唯一途径）
+    askLangIfNeeded();
     toast(t('toast.cleared'));
   }
 
@@ -1846,6 +1805,42 @@
         if (ok) clearAllData();
       });
     });
+  }
+
+  /* ================= 导出 ================= */
+
+  /** 打开导出弹层：先把文本生成好塞进 textarea，再显示 —— 复制与下载都从这儿取 */
+  function openExport() {
+    var ta = $('#expText');
+    ta.value = ExportTxt.build(state.data, { now: new Date() });
+    ta.scrollTop = 0;
+    $('#mlExpLayer').hidden = false;
+  }
+
+  function closeExport() {
+    $('#mlExpLayer').hidden = true;
+  }
+
+  /** 复制到剪贴板；沙箱里 clipboard 可能被拒，退回 textarea + execCommand */
+  function copyExport() {
+    var ta = $('#expText');
+    var text = ta.value;
+    var done = function () { toast(t('export.copied')); };
+    var fallback = function () {
+      try {
+        ta.focus();
+        ta.select();
+        if (document.execCommand && document.execCommand('copy')) { done(); return; }
+      } catch (e) { /* 下面统一提示 */ }
+      toast(t('export.copyFail'));
+    };
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(done, fallback);
+        return;
+      }
+    } catch (e) { /* 降级到 execCommand */ }
+    fallback();
   }
 
   function openSettings() {
@@ -2147,31 +2142,16 @@
         }
       }
       renderAll();
-    }, function () { renderAll(); });
+      // 数据到手后才谈得上「有没有选过语言」：选过就收起选择框，没选过就弹出来
+      askLangIfNeeded();
+    }, function () { renderAll(); askLangIfNeeded(); });
   }
 
   function registerHooks() {
     var P = window.PluginAPI;
     if (!P || typeof P.registerHook !== 'function' || !P.Hooks) return;
 
-    // 宿主里切了语言：语言偏好是「自动」时跟着换，界面立刻重排。
-    // 载荷里带新的语言码，先记下来 —— 不依赖 cfg 里有没有 lang。
-    var lKey = P.Hooks.LANGUAGE_CHANGE;
-    if (lKey) {
-      try {
-        P.registerHook(lKey, function (payload) {
-          var code = payloadLang(payload);
-          if (code) hostLangCode = code;
-          if (langPref() !== 'auto') return;
-          // 设定值可能刚被写进 globalConfig，补读一次再定语言
-          primeHostLang().then(function () {
-            applyLang('auto');
-            renderAll();
-            refreshSettingsForm();
-          });
-        });
-      } catch (e) { /* 单个钩子注册失败不影响其它钩子 */ }
-    }
+    // 不监听 languageChange：语言已锁定在同步数据里，宿主怎么切都与插件无关。
 
     var key = P.Hooks.PERSISTED_DATA_CHANGED;
     if (!key) return;
@@ -2191,6 +2171,8 @@
             state.lastWritten = nextJson;
             applyLang(next.settings && next.settings.lang);
             renderAll();
+            // 另一台设备刚选好语言 / 刚清空数据，这边跟着变
+            askLangIfNeeded();
             if (!state.editingId) toast(t('toast.synced'));
           } catch (e) { /* 忽略损坏数据 */ }
         });
@@ -2308,11 +2290,10 @@
     $('#mlSettings').addEventListener('click', openSettings);
     $('#mlSetClose').addEventListener('click', closeSettings);
     $('#mlSetMask').addEventListener('click', closeSettings);
-    $('#sLang').addEventListener('click', function (e) {
+    $('#mlLangPick').addEventListener('click', function (e) {
       var b = e.target.closest('button');
-      if (!b) return;
-      setSeg('#sLang', b.dataset.v);
-      setLangPref(b.dataset.v);
+      if (!b || !b.dataset.lang) return;
+      pickLang(b.dataset.lang);
     });
     $('#sHero').addEventListener('change', function () {
       updateSetting('hero', this.checked);
@@ -2334,6 +2315,10 @@
     $('#sClear').addEventListener('click', function () {
       askClearData();
     });
+    $('#sExport').addEventListener('click', openExport);
+    $('#mlExpClose').addEventListener('click', closeExport);
+    $('#mlExpMask').addEventListener('click', closeExport);
+    $('#expCopy').addEventListener('click', copyExport);
 
     $('#mlSave').addEventListener('click', saveSheet);
     $('#mlCancel').addEventListener('click', closeSheet);
@@ -2352,6 +2337,7 @@
       if (e.key !== 'Escape') return;
       // 编辑弹层叠在详情之上，Esc 先收最上面那层
       if (!$('#mlLayer').hidden) closeSheet();
+      else if (!$('#mlExpLayer').hidden) closeExport();
       else if (!$('#mlSetLayer').hidden) closeSettings();
       else if (detailOpen()) closeDetail();
     });
@@ -2361,18 +2347,12 @@
 
   function init() {
     detectTheme();
-    // 先用系统语言把骨架铺好，load() 拿到存下的偏好后会再切一次
+    // 先用基准语言把骨架铺好（数据里的语言要等 load() 回来）。
+    // 选择框不在这里弹：那时还不知道数据里有没有语言，会先闪一下再消失。
     applyLang(state.data.settings && state.data.settings.lang);
     bind();
     load();
     registerHooks();
-    // 「跟随系统」时 getCurrentLanguage() 只会给默认值 en，补读真实设定值再定一次语言
-    primeHostLang().then(function (changed) {
-      if (!changed || langPref() !== 'auto') return;
-      applyLang('auto');
-      renderAll();
-      refreshSettingsForm();
-    });
     // 主题改为「宿主属性变化即触发 + 8 秒兜底」，不再每 3 秒强制读一次计算样式
     watchTheme();
   }

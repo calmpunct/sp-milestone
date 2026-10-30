@@ -283,12 +283,12 @@ eq(Object.keys(oldShape.settings).sort().join(','), 'hero,lang,lunar,taskTag,tic
 eq(oldShape.settings.tick, false, '秒级计时默认关');
 eq(Core.normalize({ settings: { tick: 'yes' } }).settings.tick, false, '非布尔值不算开');
 eq(Core.normalize({ settings: { tick: true } }).settings.tick, true, '明确 true 才算开');
-eq('taskProject' in oldShape.settings, false, '旧的项目名已迁出：任务改落收件箱 + 标签');
+eq('taskProject' in oldShape.settings, false, '未知设置项不落库（按白名单重建）');
 eq(oldShape.settings.taskTag, 'milestone', '标签名默认 milestone');
 eq(Core.normalize({ settings: { taskTag: '  ' } }).settings.taskTag, 'milestone', '空白标签名回落到默认值');
 eq(Core.normalize({ settings: { taskTag: '生日提醒' } }).settings.taskTag, '生日提醒', '自定义标签名保留');
 eq(oldShape.settings.hero, true, '缺省开启置顶卡片');
-eq('strikeExpired' in Core.normalize({ settings: { strikeExpired: false } }).settings, false, '删除线开关已移除，旧字段不落库');
+eq('strikeExpired' in Core.normalize({ settings: { strikeExpired: false } }).settings, false, '不认识的设置项静默丢弃');
 eq(Core.normalize({ settings: { hero: false } }).settings.hero, false, '关闭置顶被保留');
 eq(Core.normalize({}).settings.hero, true, '没有 settings 时默认开启');
 eq(Core.emptyData().version, 1, '数据版本 1');

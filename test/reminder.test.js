@@ -80,6 +80,10 @@ function boot(store, opts) {
     },
     getAllTags() { return Promise.resolve(Object.keys(host.tags).map((k) => clone(host.tags[k]))); },
     getTasks() { return Promise.resolve(Object.keys(host.tasks).map((k) => clone(host.tasks[k]))); },
+    // 归档任务：跨设备判断「这一轮已经做完了」要用（见 plugin-main 的 4.0）
+    getArchivedTasks() {
+      return Promise.resolve(Object.keys(host.archived || {}).map((k) => clone(host.archived[k])));
+    },
     addTask(d) {
       const id = 'task_' + (++host.seq);
       host.tasks[id] = {
@@ -153,24 +157,25 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     eq(regs.sidePanel, 0, '不注册顶栏侧栏按钮');
     // 钩子同样走 P()：API 拿不到时连钩子都挂不上，提醒功能会整条静默失效
     ok(!!api.hooks.persistedDataChanged, '注册同步钩子');
-    ok(!!api.hooks.languageChange, '注册语言钩子');
+    // 语言锁定后宿主切语言与任务文案无关，这个钩子不再需要注册
+    ok(!api.hooks.languageChange, '不注册语言钩子');
   }
 
-  console.log('[1.1] 切语言不影响入口');
+  console.log('[1.1] 语言只看同步数据，不看宿主');
   {
-    // 入口名写死，宿主语言是中文还是英文都一样
-    const en = boot(data([], { lang: 'auto' }), { lang: 'en' });
-    eq(en.regs.menuLabel, 'Milestone', '英文宿主入口名同样是 Milestone');
+    // 数据里写中文，宿主是英文：任务标题仍然是中文（否则每台设备各按自己系统语言写）
+    const zhData = boot(data([], { lang: 'zh' }), { lang: 'en' });
+    eq(zhData.regs.menuLabel, 'Milestone', '入口名固定为 Milestone');
 
-    // 运行时切语言：宿主没有改名接口，也不该为改名再注册一次或弹提示
-    const run = boot(data([], { lang: 'auto' }), { lang: 'zh' });
-    await wait(60);
-    eq(run.regs.menu, 1, '只注册过一次');
-    run.api.getCurrentLanguage = () => 'en';
-    run.api.hooks.languageChange({ code: 'en', newLanguage: 'en' });
-    await wait(60);
-    eq(run.regs.menu, 1, '切语言不重复注册（否则导航会多一个入口）');
-    eq(run.regs.menuLabel, 'Milestone', '切语言后入口名照旧');
+    const e = ev({ id: 'q1', title: '体检', kind: 'birthday', date: '1990-05-12', repeat: true,
+      remind: { task: true, offsets: [0] } });
+    const zh = boot(data([e], { lang: 'zh' }), { lang: 'en' });
+    await wait(200);
+    ok(taskList(zh.host)[0].title.indexOf('生日') !== -1, '数据 lang=zh → 中文标题：' + taskList(zh.host)[0].title);
+
+    const en = boot(data([e], { lang: 'en' }), { lang: 'zh' });
+    await wait(200);
+    ok(/birthday/.test(taskList(en.host)[0].title), '数据 lang=en → 英文标题：' + taskList(en.host)[0].title);
   }
 
   console.log('[2] 首次同步写入任务');
@@ -236,10 +241,10 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     ok(!second.calls.some((c) => c.op === 'addTag'), '没有再调 addTag');
   }
 
-  console.log('[3.2] 老任务（在旧项目里、没标签）只补标签，不搬项目');
+  console.log('[3.2] 用户摘掉标签就尊重它，不巡视全场补回来');
   {
-    // 早期版本把任务建在「里程碑提醒」项目里；宿主改 projectId 不会同步项目侧
-    // 的 taskIds，所以这里只补标签、projectId 原样保留
+    // 任务本身（标题/备注/到期日）都还对得上，只是标签被用户清掉了。
+    // 不做「每轮扫一遍补标签」—— 那是跟用户抢设置，而且会制造无意义的写入。
     const e = ev({ id: 'p3', title: '老李生日', kind: 'birthday', date: '2020-05-05', repeat: true });
     const norm = Core.normalize({ events: [e] }).events[0];
     const d = RT.desiredTask(norm, new Date());
@@ -247,19 +252,16 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
       host: {
         tasks: {
           old_1: { id: 'old_1', title: d.title, notes: d.notes, dueDay: d.dueDay,
-            isDone: false, projectId: 'legacy_proj', tagIds: [], created: 1 }
+            isDone: false, projectId: null, tagIds: [], created: 1 }
         },
         tags: {},
         seq: 5
       }
     });
     await wait(150);
-    eq(taskList(host).length, 1, '老任务被认领，不重复创建');
-    const t = host.tasks.old_1;
-    eq(t.projectId, 'legacy_proj', 'projectId 不动，避免项目侧 taskIds 对不上');
-    eq(t.tagIds.length, 1, '补上 milestone 标签');
-    ok(calls.some((c) => c.op === 'update' && c.patch && c.patch.tagIds), '通过 updateTask 只写 tagIds');
-    ok(!calls.some((c) => c.op === 'update' && 'projectId' in (c.patch || {})), '补丁里没有 projectId');
+    eq(taskList(host).length, 1, '任务被认领，不重复创建');
+    eq(host.tasks.old_1.tagIds.length, 0, '标签被用户摘掉后不强行补回');
+    ok(!calls.some((c) => c.op === 'update'), '没有产生任何写入');
   }
 
   console.log('[4] 删除事项 → 任务消失');
@@ -394,7 +396,79 @@ const taskList = (host) => Object.keys(host.tasks).map((k) => host.tasks[k]);
     eq(taskList(first.host).length, 0, '已完成过的这一轮不再重新生成');
   }
 
-  console.log('[12] 坏数据不崩溃');
+  console.log('[12] 另一台设备勾完并归档 → 本机不再重建');
+  {
+    // 本机是新设备：localStorage 空，没有 ml-handled-v1；
+    // 任务已被另一端完成并归档，所以 getAppState() 里看不到它。
+    // 只靠本机 handled 记录时这里会重新建出一条（PR 审阅指出的跨设备复活）。
+    const e = ev({ id: 'z1', title: '还款', date: inDays(3), remind: { task: true, offsets: [0] } });
+    const norm = Core.normalize({ events: [e] }).events[0];
+    const d = RT.desiredTask(norm, new Date());
+    const archived = {
+      old_1: { id: 'old_1', title: d.title, notes: d.notes, dueDay: d.dueDay, isDone: true, created: 1 }
+    };
+    const { host, calls, w } = boot(data([e]), { host: { tasks: {}, tags: {}, seq: 5, archived } });
+    await wait(200);
+    eq(taskList(host).length, 0, '本轮已完成 → 不再生成提醒');
+    ok(!calls.some((c) => c.op === 'add'), '没有新建任务');
+    // 命中后记进本机已处理表，下一轮不必再翻归档
+    ok(!!w.localStorage.getItem('ml-handled-v1'), '补记本机已处理（下轮不再查归档）');
+  }
+
+  console.log('[13] 归档的是上一个周期 → 该提醒还是要提醒');
+  {
+    const e = ev({ id: 'z2', title: '年检', date: inDays(4), remind: { task: true, offsets: [0] } });
+    const archived = {
+      old_2: {
+        id: 'old_2', title: '⏳ 年检', isDone: true, created: 1,
+        notes: '倒数日\n提前 0 天提醒\n' + RT.markLine('z2', '2020-01-01', 'zzz')
+      }
+    };
+    const { host, calls } = boot(data([e]), { host: { tasks: {}, tags: {}, seq: 5, archived } });
+    await wait(200);
+    eq(taskList(host).length, 1, '旧周期的归档不挡新周期');
+    ok(calls.some((c) => c.op === 'add'), '正常新增');
+  }
+
+  console.log('[14] 两台设备（宿主语言不同）不再互相改写文案');
+  {
+    // 语言锁在同步数据里（zh），另一台设备的宿主界面是英文 —— 它不该把文案改成英文。
+    // 这是当初「标题备注互相覆盖」的根因，现在由「语言只有一个来源」直接消除。
+    const e = ev({ id: 'y1', title: '签证到期', date: inDays(12), remind: { task: true, offsets: [3] } });
+    const first = boot(data([e], { lang: 'zh' }), { lang: 'zh' });
+    await wait(200);
+    const id = taskList(first.host)[0] && taskList(first.host)[0].id;
+    ok(!!id, '中文设备先生成任务');
+    const before = first.host.tasks[id].title;
+    const notesBefore = first.host.tasks[id].notes;
+
+    const second = boot(data([e], { lang: 'zh' }), {
+      host: first.host,
+      lang: 'en',
+      reuse: { 'ml-task-map-v1': first.w.localStorage.getItem('ml-task-map-v1') || '{}' }
+    });
+    await wait(300);
+    eq(first.host.tasks[id].title, before, '英文宿主的设备不改写标题');
+    eq(first.host.tasks[id].notes, notesBefore, '也不改写备注');
+    ok(!second.calls.some((c) => c.op === 'update' && c.patch && ('title' in c.patch || 'notes' in c.patch)),
+      '没有任何文案写入');
+
+    // 文案被外部改坏（比如旧版本写过英文）：下一轮直接按数据里的语言修回来，
+    // 标题与备注必须一起修好 —— 不能出现「标题换了、备注还是旧的」。
+    Core.setLang('en');
+    const en = RT.desiredTask(Core.normalize({ events: [e] }).events[0], new Date());
+    Core.setLang('zh');
+    ok(en.title !== before || en.notes !== notesBefore, '英文文案与中文不同（前提成立）');
+    first.host.tasks[id].title = en.title;
+    first.host.tasks[id].notes = en.notes;
+
+    first.api.hooks.persistedDataChanged({});
+    await wait(300);
+    eq(first.host.tasks[id].title, before, '标题修回中文');
+    eq(first.host.tasks[id].notes, notesBefore, '备注同时修回中文（不是只改标题）');
+  }
+
+  console.log('[15] 坏数据不崩溃');
   {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only', url: 'https://localhost/' });
     const w = dom.window;
